@@ -98,6 +98,8 @@ fn run_test(file: ~str) {
         cwd: None,
         io: [Ignored, create_pipe, Ignored]
     };
+    //FIX for 1184
+    println (infile.display.to_string());
 
     let mut prc = Process::new(config).unwrap();
     let stdout = prc.io[1].get_mut_ref();
