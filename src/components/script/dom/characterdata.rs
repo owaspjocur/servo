@@ -4,31 +4,46 @@
 
 //! DOM bindings for `CharacterData`.
 
-use dom::bindings::utils::{DOMString, ErrorResult, Fallible};
+use dom::bindings::codegen::InheritTypes::CharacterDataDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::{Fallible, ErrorResult};
 use dom::bindings::utils::{Reflectable, Reflector};
-use dom::document::AbstractDocument;
-use dom::node::{Node, NodeTypeId, ScriptView};
-use js::jsapi::{JSObject, JSContext};
+use dom::document::Document;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
+use dom::node::{CommentNodeTypeId, Node, NodeTypeId, TextNodeTypeId, ProcessingInstructionNodeTypeId};
+use servo_util::str::DOMString;
 
+#[deriving(Encodable)]
 pub struct CharacterData {
-    node: Node<ScriptView>,
-    data: ~str
+    node: Node,
+    data: DOMString,
+}
+
+impl CharacterDataDerived for EventTarget {
+    fn is_characterdata(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(TextNodeTypeId) |
+            NodeTargetTypeId(CommentNodeTypeId) |
+            NodeTargetTypeId(ProcessingInstructionNodeTypeId) => true,
+            _ => false
+        }
+    }
 }
 
 impl CharacterData {
-    pub fn new(id: NodeTypeId, data: ~str, document: AbstractDocument) -> CharacterData {
+    pub fn new_inherited(id: NodeTypeId, data: DOMString, document: JS<Document>) -> CharacterData {
         CharacterData {
-            node: Node::new(id, document),
+            node: Node::new_inherited(id, document),
             data: data
         }
     }
     
     pub fn Data(&self) -> DOMString {
-        Some(self.data.clone())
+        self.data.clone()
     }
 
-    pub fn SetData(&mut self, arg: &DOMString) -> ErrorResult {
-        self.data = arg.get_ref().clone();
+    pub fn SetData(&mut self, arg: DOMString) -> ErrorResult {
+        self.data = arg;
         Ok(())
     }
 
@@ -37,15 +52,15 @@ impl CharacterData {
     }
 
     pub fn SubstringData(&self, offset: u32, count: u32) -> Fallible<DOMString> {
-        Ok(Some(self.data.slice(offset as uint, count as uint).to_str()))
+        Ok(self.data.slice(offset as uint, count as uint).to_str())
     }
 
-    pub fn AppendData(&mut self, arg: &DOMString) -> ErrorResult {
-        self.data.push_str(arg.get_ref().clone());
+    pub fn AppendData(&mut self, arg: DOMString) -> ErrorResult {
+        self.data.push_str(arg);
         Ok(())
     }
 
-    pub fn InsertData(&mut self, _offset: u32, _arg: &DOMString) -> ErrorResult {
+    pub fn InsertData(&mut self, _offset: u32, _arg: DOMString) -> ErrorResult {
         fail!("CharacterData::InsertData() is unimplemented")
     }
 
@@ -53,7 +68,7 @@ impl CharacterData {
         fail!("CharacterData::DeleteData() is unimplemented")
     }
 
-    pub fn ReplaceData(&mut self, _offset: u32, _count: u32, _arg: &DOMString) -> ErrorResult {
+    pub fn ReplaceData(&mut self, _offset: u32, _count: u32, _arg: DOMString) -> ErrorResult {
         fail!("CharacterData::ReplaceData() is unimplemented")
     }
 }
@@ -65,13 +80,5 @@ impl Reflectable for CharacterData {
 
     fn mut_reflector<'a>(&'a mut self) -> &'a mut Reflector {
         self.node.mut_reflector()
-    }
-
-    fn wrap_object_shared(@mut self, _cx: *JSContext, _scope: *JSObject) -> *JSObject {
-        fail!(~"need to implement wrapping");
-    }
-
-    fn GetParentObject(&self, cx: *JSContext) -> Option<@mut Reflectable> {
-        self.node.GetParentObject(cx)
     }
 }

@@ -25,8 +25,8 @@ On Debian-based Linuxes:
 
 ``` sh
 sudo apt-get install autoconf2.13 curl freeglut3-dev libtool \
-    libfreetype6-dev libfontconfig1-dev libgl1-mesa-dri libglib2.0-dev \
-    xorg-dev msttcorefonts
+    libfreetype6-dev libgl1-mesa-dri libglib2.0-dev xorg-dev \
+    msttcorefonts gperf g++
 ```
 
 On Debian-based Linuxes (cross-compilation for Android):
@@ -35,7 +35,7 @@ On Debian-based Linuxes (cross-compilation for Android):
 sudo apt-get install autoconf2.13 curl libtool ia32-libs
 ```
 And it needs pre-installed Android tools.
-See wiki for [details](https://github.com/mozilla/servo/wiki/Doc-building-for-android)
+See wiki for [details](https://github.com/mozilla/servo/wiki/Building-for-Android)
 
 
 Servo builds its own copy of Rust, so there is no need to provide a Rust
@@ -95,3 +95,4 @@ There are lots of make targets you can use:
 - `make DEP` - builds only the specified dependency. e.g. `make rust-opengles`
 - `make check-DEP` - build and run tests for specified dependency
 
+The `make check-*` targets for running tests are listed [here](https://github.com/mozilla/servo/wiki/Testing)

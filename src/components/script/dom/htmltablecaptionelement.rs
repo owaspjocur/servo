@@ -3,35 +3,49 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use dom::bindings::codegen::HTMLTableCaptionElementBinding;
-use dom::bindings::utils::{DOMString, ErrorResult};
-use dom::document::AbstractDocument;
+use dom::bindings::codegen::InheritTypes::HTMLTableCaptionElementDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
 use dom::element::HTMLTableCaptionElementTypeId;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
-use dom::node::{AbstractNode, Node, ScriptView};
+use dom::node::{Node, ElementNodeTypeId};
+use servo_util::str::DOMString;
 
+#[deriving(Encodable)]
 pub struct HTMLTableCaptionElement {
     htmlelement: HTMLElement
 }
 
+impl HTMLTableCaptionElementDerived for EventTarget {
+    fn is_htmltablecaptionelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLTableCaptionElementTypeId)) => true,
+            _ => false
+        }
+    }
+}
+
 impl HTMLTableCaptionElement {
-    pub fn new_inherited(localName: ~str, document: AbstractDocument) -> HTMLTableCaptionElement {
+    pub fn new_inherited(localName: DOMString, document: JS<Document>) -> HTMLTableCaptionElement {
         HTMLTableCaptionElement {
-            htmlelement: HTMLElement::new(HTMLTableCaptionElementTypeId, localName, document)
+            htmlelement: HTMLElement::new_inherited(HTMLTableCaptionElementTypeId, localName, document)
         }
     }
 
-    pub fn new(localName: ~str, document: AbstractDocument) -> AbstractNode<ScriptView> {
-        let element = HTMLTableCaptionElement::new_inherited(localName, document);
-        Node::reflect_node(@mut element, document, HTMLTableCaptionElementBinding::Wrap)
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLTableCaptionElement> {
+        let element = HTMLTableCaptionElement::new_inherited(localName, document.clone());
+        Node::reflect_node(~element, document, HTMLTableCaptionElementBinding::Wrap)
     }
 }
 
 impl HTMLTableCaptionElement {
     pub fn Align(&self) -> DOMString {
-        None
+        ~""
     }
     
-    pub fn SetAlign(&mut self, _align: &DOMString) -> ErrorResult {
+    pub fn SetAlign(&mut self, _align: DOMString) -> ErrorResult {
         Ok(())
     }
 }

@@ -8,14 +8,14 @@ extern mod core_foundation;
 extern mod core_graphics;
 extern mod core_text;
 
-use font::{CSSFontWeight, FontHandleMethods, FontMetrics, FontTableMethods};
-use font::{FontTableTag, FontWeight100, FontWeight200, FontWeight300, FontWeight400};
-use font::{FontWeight500, FontWeight600, FontWeight700, FontWeight800, FontWeight900};
+use font::{FontHandleMethods, FontMetrics, FontTableMethods};
+use font::FontTableTag;
 use font::{FractionalPixel, SpecifiedFontStyle};
 use servo_util::geometry::{Au, px_to_pt};
 use servo_util::geometry;
 use platform::macos::font_context::FontContextHandle;
 use text::glyph::GlyphIndex;
+use style::computed_values::font_weight;
 
 use core_foundation::base::CFIndex;
 use core_foundation::data::CFData;
@@ -23,8 +23,7 @@ use core_foundation::string::UniChar;
 use core_graphics::data_provider::CGDataProvider;
 use core_graphics::font::{CGFont, CGGlyph};
 use core_graphics::geometry::CGRect;
-use core_graphics;
-use core_text::font::{CTFont, CTFontMethods, CTFontMethodsPrivate};
+use core_text::font::CTFont;
 use core_text::font_descriptor::{SymbolicTraitAccessors, TraitAccessors};
 use core_text::font_descriptor::{kCTFontDefaultOrientation};
 use core_text;
@@ -47,8 +46,8 @@ impl FontTable {
 }
 
 impl FontTableMethods for FontTable {
-    fn with_buffer(&self, blk: &fn(*u8, uint)) {
-        blk(self.data.bytes(), self.data.len());
+    fn with_buffer(&self, blk: |*u8, uint|) {
+        blk(self.data.bytes().as_ptr(), self.data.len() as uint);
     }
 }
 
@@ -80,11 +79,8 @@ impl FontHandle {
 impl FontHandleMethods for FontHandle {
     fn new_from_buffer(_: &FontContextHandle, buf: ~[u8], style: &SpecifiedFontStyle)
                     -> Result<FontHandle, ()> {
-        let fontprov : CGDataProvider = do buf.as_imm_buf |cbuf, len| {
-            core_graphics::data_provider::new_from_buffer(cbuf, len)
-        };
-
-        let cgfont = core_graphics::font::create_with_data_provider(&fontprov);
+        let fontprov = CGDataProvider::from_buffer(buf);
+        let cgfont = CGFont::from_data_provider(fontprov);
         let ctfont = core_text::font::new_from_CGFont(&cgfont, style.pt_size);
 
         let result = Ok(FontHandle {
@@ -107,20 +103,20 @@ impl FontHandleMethods for FontHandle {
         self.ctfont.symbolic_traits().is_italic()
     }
 
-    fn boldness(&self) -> CSSFontWeight {
+    fn boldness(&self) -> font_weight::T {
         // -1.0 to 1.0
         let normalized = self.ctfont.all_traits().normalized_weight();
         // 0.0 to 9.0
         let normalized = (normalized + 1.0) / 2.0 * 9.0;
-        if normalized < 1.0 { return FontWeight100; }
-        if normalized < 2.0 { return FontWeight200; }
-        if normalized < 3.0 { return FontWeight300; }
-        if normalized < 4.0 { return FontWeight400; }
-        if normalized < 5.0 { return FontWeight500; }
-        if normalized < 6.0 { return FontWeight600; }
-        if normalized < 7.0 { return FontWeight700; }
-        if normalized < 8.0 { return FontWeight800; }
-        return FontWeight900;
+        if normalized < 1.0 { return font_weight::Weight100; }
+        if normalized < 2.0 { return font_weight::Weight200; }
+        if normalized < 3.0 { return font_weight::Weight300; }
+        if normalized < 4.0 { return font_weight::Weight400; }
+        if normalized < 5.0 { return font_weight::Weight500; }
+        if normalized < 6.0 { return font_weight::Weight600; }
+        if normalized < 7.0 { return font_weight::Weight700; }
+        if normalized < 8.0 { return font_weight::Weight800; }
+        return font_weight::Weight900;
     }
 
     fn clone_with_style(&self, fctx: &FontContextHandle, style: &SpecifiedFontStyle)
@@ -188,9 +184,9 @@ impl FontHandleMethods for FontHandle {
 
     fn get_table_for_tag(&self, tag: FontTableTag) -> Option<FontTable> {
         let result: Option<CFData> = self.ctfont.get_font_table(tag);
-        do result.and_then |data| {
+        result.and_then(|data| {
             Some(FontTable::wrap(data))
-        }
+        })
     }
 
     fn face_identifier(&self) -> ~str {

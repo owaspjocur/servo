@@ -43,6 +43,7 @@ pub mod specified {
                 _ => None
             }
         }
+        #[allow(dead_code)]
         pub fn parse(input: &ComponentValue) -> Option<Length> {
             Length::parse_internal(input, /* negative_ok = */ true)
         }
@@ -50,7 +51,9 @@ pub mod specified {
             Length::parse_internal(input, /* negative_ok = */ false)
         }
         pub fn parse_dimension(value: CSSFloat, unit: &str) -> Option<Length> {
-            match unit.to_ascii_lower().as_slice() {
+            // FIXME: Workaround for https://github.com/mozilla/rust/issues/10683
+            let unit_lower = unit.to_ascii_lower(); 
+            match unit_lower.as_slice() {
                 "px" => Some(Length::from_px(value)),
                 "in" => Some(Au_(Au((value * AU_PER_IN) as i32))),
                 "cm" => Some(Au_(Au((value * AU_PER_CM) as i32))),
@@ -85,6 +88,7 @@ pub mod specified {
                 _ => None
             }
         }
+        #[allow(dead_code)]
         #[inline]
         pub fn parse(input: &ComponentValue) -> Option<LengthOrPercentage> {
             LengthOrPercentage::parse_internal(input, /* negative_ok = */ true)
@@ -123,10 +127,39 @@ pub mod specified {
             LengthOrPercentageOrAuto::parse_internal(input, /* negative_ok = */ false)
         }
     }
+
+    #[deriving(Clone)]
+    pub enum LengthOrPercentageOrNone {
+        LPN_Length(Length),
+        LPN_Percentage(CSSFloat),  // [0 .. 100%] maps to [0.0 .. 1.0]
+        LPN_None,
+    }
+    impl LengthOrPercentageOrNone {
+        fn parse_internal(input: &ComponentValue, negative_ok: bool)
+                     -> Option<LengthOrPercentageOrNone> {
+            match input {
+                &Dimension(ref value, ref unit) if negative_ok || value.value >= 0.
+                => Length::parse_dimension(value.value, unit.as_slice()).map(LPN_Length),
+                &ast::Percentage(ref value) if negative_ok || value.value >= 0.
+                => Some(LPN_Percentage(value.value / 100.)),
+                &Number(ref value) if value.value == 0. => Some(LPN_Length(Au_(Au(0)))),
+                &Ident(ref value) if value.eq_ignore_ascii_case("none") => Some(LPN_None),
+                _ => None
+            }
+        }
+        #[allow(dead_code)]
+        #[inline]
+        pub fn parse(input: &ComponentValue) -> Option<LengthOrPercentageOrNone> {
+            LengthOrPercentageOrNone::parse_internal(input, /* negative_ok = */ true)
+        }
+        #[inline]
+        pub fn parse_non_negative(input: &ComponentValue) -> Option<LengthOrPercentageOrNone> {
+            LengthOrPercentageOrNone::parse_internal(input, /* negative_ok = */ false)
+        }
+    }
 }
 
 pub mod computed {
-    use cssparser;
     pub use CSSColor = cssparser::Color;
     pub use compute_CSSColor = super::super::longhands::computed_as_specified;
     use super::*;
@@ -134,26 +167,34 @@ pub mod computed {
     pub use servo_util::geometry::Au;
 
     pub struct Context {
-        current_color: cssparser::RGBA,
-        font_size: Au,
-        font_weight: longhands::font_weight::computed_value::T,
-        position: longhands::position::SpecifiedValue,
-        float: longhands::float::SpecifiedValue,
+        color: longhands::color::computed_value::T,
+        inherited_font_weight: longhands::font_weight::computed_value::T,
+        inherited_font_size: longhands::font_size::computed_value::T,
+        font_size: longhands::font_size::computed_value::T,
+        positioned: bool,
+        floated: bool,
+        border_top_present: bool,
+        border_right_present: bool,
+        border_bottom_present: bool,
+        border_left_present: bool,
         is_root_element: bool,
-        has_border_top: bool,
-        has_border_right: bool,
-        has_border_bottom: bool,
-        has_border_left: bool,
         // TODO, as needed: root font size, viewport size, etc.
     }
 
+    #[inline]
     pub fn compute_Au(value: specified::Length, context: &Context) -> Au {
+        compute_Au_with_font_size(value, context.font_size)
+    }
+
+    /// A special version of `compute_Au` used for `font-size`.
+    #[inline]
+    pub fn compute_Au_with_font_size(value: specified::Length, reference_font_size: Au) -> Au {
         match value {
             specified::Au_(value) => value,
-            specified::Em(value) => context.font_size.scale_by(value),
+            specified::Em(value) => reference_font_size.scale_by(value),
             specified::Ex(value) => {
                 let x_height = 0.5;  // TODO: find that from the font
-                context.font_size.scale_by(value * x_height)
+                reference_font_size.scale_by(value * x_height)
             },
         }
     }
@@ -183,6 +224,21 @@ pub mod computed {
             specified::LPA_Length(value) => LPA_Length(compute_Au(value, context)),
             specified::LPA_Percentage(value) => LPA_Percentage(value),
             specified::LPA_Auto => LPA_Auto,
+        }
+    }
+
+    #[deriving(Eq, Clone)]
+    pub enum LengthOrPercentageOrNone {
+        LPN_Length(Au),
+        LPN_Percentage(CSSFloat),
+        LPN_None,
+    }
+    pub fn compute_LengthOrPercentageOrNone(value: specified::LengthOrPercentageOrNone,
+                                            context: &Context) -> LengthOrPercentageOrNone {
+        match value {
+            specified::LPN_Length(value) => LPN_Length(compute_Au(value, context)),
+            specified::LPN_Percentage(value) => LPN_Percentage(value),
+            specified::LPN_None => LPN_None,
         }
     }
 }

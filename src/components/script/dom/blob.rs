@@ -2,35 +2,52 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use dom::bindings::js::JS;
 use dom::bindings::utils::{Reflectable, Reflector, reflect_dom_object};
-use dom::bindings::utils::Fallible;
+use dom::bindings::error::Fallible;
 use dom::bindings::codegen::BlobBinding;
 use dom::window::Window;
+use servo_util::str::DOMString;
 
-use js::jsapi::{JSContext, JSObject};
-
+#[deriving(Encodable)]
 pub struct Blob {
     reflector_: Reflector,
-    window: @mut Window,
+    window: JS<Window>
 }
 
 impl Blob {
-    pub fn new_inherited(window: @mut Window) -> Blob {
+    pub fn new_inherited(window: JS<Window>) -> Blob {
         Blob {
             reflector_: Reflector::new(),
-            window: window,
+            window: window
         }
     }
 
-    pub fn new(window: @mut Window) -> @mut Blob {
-        reflect_dom_object(@mut Blob::new_inherited(window), window, BlobBinding::Wrap)
+    pub fn new(window: &JS<Window>) -> JS<Blob> {
+        reflect_dom_object(~Blob::new_inherited(window.clone()),
+                           window,
+                           BlobBinding::Wrap)
     }
 }
 
 impl Blob {
-    pub fn Constructor(window: @mut Window) -> Fallible<@mut Blob> {
+    pub fn Constructor(window: &JS<Window>) -> Fallible<JS<Blob>> {
         Ok(Blob::new(window))
     }
+
+    pub fn Size(&self) -> u64 {
+        0
+    }
+
+    pub fn Type(&self) -> DOMString {
+        ~""
+    }
+
+    pub fn Slice(&self, _start: i64, _end: i64, _contentType: Option<DOMString>) -> JS<Blob> {
+        Blob::new(&self.window)
+    }
+
+    pub fn Close(&self) {}
 }
 
 impl Reflectable for Blob {
@@ -40,13 +57,5 @@ impl Reflectable for Blob {
 
     fn mut_reflector<'a>(&'a mut self) -> &'a mut Reflector {
         &mut self.reflector_
-    }
-
-    fn wrap_object_shared(@mut self, _cx: *JSContext, _scope: *JSObject) -> *JSObject {
-        unreachable!();
-    }
-
-    fn GetParentObject(&self, _cx: *JSContext) -> Option<@mut Reflectable> {
-        Some(self.window as @mut Reflectable)
     }
 }

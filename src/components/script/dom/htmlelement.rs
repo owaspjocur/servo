@@ -2,50 +2,71 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use dom::bindings::utils::{DOMString, ErrorResult, Fallible};
-use dom::document::AbstractDocument;
-use dom::element::{Element, ElementTypeId};
-use dom::node::{AbstractNode, ScriptView};
-use js::jsapi::{JSContext, JSVal};
-use js::JSVAL_NULL;
+use dom::bindings::codegen::HTMLElementBinding;
+use dom::bindings::codegen::InheritTypes::HTMLElementDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::{ErrorResult, Fallible};
+use dom::document::Document;
+use dom::element::{Element, ElementTypeId, HTMLElementTypeId};
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
+use dom::node::{Node, ElementNodeTypeId};
+use js::jsapi::JSContext;
+use js::jsval::{JSVal, NullValue};
+use servo_util::namespace;
+use servo_util::str::DOMString;
 
+#[deriving(Encodable)]
 pub struct HTMLElement {
     element: Element
 }
 
-impl HTMLElement {
-    pub fn new(type_id: ElementTypeId, tag_name: ~str, document: AbstractDocument) -> HTMLElement {
-        HTMLElement {
-            element: Element::new(type_id, tag_name, document)
+impl HTMLElementDerived for EventTarget {
+    fn is_htmlelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(_)) => true,
+            _ => false
         }
     }
 }
 
 impl HTMLElement {
-    pub fn Title(&self) -> DOMString {
-        None
+    pub fn new_inherited(type_id: ElementTypeId, tag_name: DOMString, document: JS<Document>) -> HTMLElement {
+        HTMLElement {
+            element: Element::new_inherited(type_id, tag_name, namespace::HTML, document)
+        }
     }
 
-    pub fn SetTitle(&mut self, _title: &DOMString) {
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLElement> {
+        let element = HTMLElement::new_inherited(HTMLElementTypeId, localName, document.clone());
+        Node::reflect_node(~element, document, HTMLElementBinding::Wrap)
+    }
+}
+
+impl HTMLElement {
+    pub fn Title(&self) -> DOMString {
+        ~""
+    }
+
+    pub fn SetTitle(&mut self, _title: DOMString) {
     }
 
     pub fn Lang(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetLang(&mut self, _lang: &DOMString) {
+    pub fn SetLang(&mut self, _lang: DOMString) {
     }
 
     pub fn Dir(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetDir(&mut self, _dir: &DOMString) -> ErrorResult {
+    pub fn SetDir(&mut self, _dir: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn GetItemValue(&self, _cx: *JSContext) -> Fallible<JSVal> {
-        Ok(JSVAL_NULL)
+        Ok(NullValue())
     }
 
     pub fn SetItemValue(&mut self, _cx: *JSContext, _val: JSVal) -> ErrorResult {
@@ -80,15 +101,15 @@ impl HTMLElement {
     }
 
     pub fn AccessKey(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAccessKey(&self, _key: &DOMString) -> ErrorResult {
+    pub fn SetAccessKey(&self, _key: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn AccessKeyLabel(&self) -> DOMString {
-        None
+        ~""
     }
 
     pub fn Draggable(&self) -> bool {
@@ -100,10 +121,10 @@ impl HTMLElement {
     }
 
     pub fn ContentEditable(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetContentEditable(&mut self, _val: &DOMString) -> ErrorResult {
+    pub fn SetContentEditable(&mut self, _val: DOMString) -> ErrorResult {
         Ok(())
     }
 
@@ -119,14 +140,7 @@ impl HTMLElement {
         Ok(())
     }
 
-    pub fn ClassName(&self) -> DOMString {
-        None
-    }
-
-    pub fn SetClassName(&self, _class: &DOMString) {
-    }
-
-    pub fn GetOffsetParent(&self) -> Option<AbstractNode<ScriptView>> {
+    pub fn GetOffsetParent(&self) -> Option<JS<Element>> {
         None
     }
 

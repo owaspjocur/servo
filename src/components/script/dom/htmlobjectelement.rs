@@ -2,75 +2,141 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use dom::bindings::utils::{DOMString, ErrorResult};
-use dom::document::AbstractDocument;
+use dom::bindings::codegen::HTMLObjectElementBinding;
+use dom::bindings::codegen::InheritTypes::HTMLObjectElementDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
+use dom::element::HTMLObjectElementTypeId;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
-use dom::node::{AbstractNode, ScriptView};
+use dom::htmlformelement::HTMLFormElement;
+use dom::node::{Node, ElementNodeTypeId};
 use dom::validitystate::ValidityState;
 use dom::windowproxy::WindowProxy;
+use servo_util::str::DOMString;
 
+use extra::url::Url;
+use servo_net::image_cache_task;
+use servo_net::image_cache_task::ImageCacheTask;
+use servo_util::url::parse_url;
+use servo_util::namespace::Null;
+use servo_util::url::is_image_data;
+
+#[deriving(Encodable)]
 pub struct HTMLObjectElement {
-    htmlelement: HTMLElement
+    htmlelement: HTMLElement,
+}
+
+impl HTMLObjectElementDerived for EventTarget {
+    fn is_htmlobjectelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLObjectElementTypeId)) => true,
+            _ => false
+        }
+    }
 }
 
 impl HTMLObjectElement {
-    pub fn Data(&self) -> DOMString {
-        None
+    pub fn new_inherited(localName: DOMString, document: JS<Document>) -> HTMLObjectElement {
+        HTMLObjectElement {
+            htmlelement: HTMLElement::new_inherited(HTMLObjectElementTypeId, localName, document),
+        }
     }
 
-    pub fn SetData(&mut self, _data: &DOMString) -> ErrorResult {
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLObjectElement> {
+        let element = HTMLObjectElement::new_inherited(localName, document.clone());
+        Node::reflect_node(~element, document, HTMLObjectElementBinding::Wrap)
+    }
+}
+
+impl HTMLObjectElement {
+
+    // Makes the local `data` member match the status of the `data` attribute and starts
+    /// prefetching the image. This method must be called after `data` is changed.
+    pub fn process_data_url(&mut self, image_cache: ImageCacheTask, url: Option<Url>) {
+        let elem = &mut self.htmlelement.element;
+
+        // TODO: support other values
+        match (elem.get_attribute(Null, "type").map(|x| x.get().Value()),
+               elem.get_attribute(Null, "data").map(|x| x.get().Value())) {
+            (None, Some(uri)) => {
+                if is_image_data(uri) {
+                    let data_url = parse_url(uri, url);
+                    // Issue #84
+                    image_cache.send(image_cache_task::Prefetch(data_url));
+                }
+            }
+            _ => { }
+        }
+    }
+
+    pub fn AfterSetAttr(&mut self, name: DOMString, _value: DOMString) {
+        if "data" == name {
+            let document = self.htmlelement.element.node.owner_doc().clone();
+            let window = document.get().window.clone();
+            let url = Some(window.get().get_url());
+            self.process_data_url(window.get().image_cache_task.clone(), url);
+        }
+    }
+
+    pub fn Data(&self) -> DOMString {
+        ~""
+    }
+
+    pub fn SetData(&mut self, _data: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Type(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetType(&mut self, _type: &DOMString) -> ErrorResult {
+    pub fn SetType(&mut self, _type: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Name(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetName(&mut self, _name: &DOMString) -> ErrorResult {
+    pub fn SetName(&mut self, _name: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn UseMap(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetUseMap(&mut self, _use_map: &DOMString) -> ErrorResult {
+    pub fn SetUseMap(&mut self, _use_map: DOMString) -> ErrorResult {
         Ok(())
     }
 
-    pub fn GetForm(&self) -> Option<AbstractNode<ScriptView>> {
+    pub fn GetForm(&self) -> Option<JS<HTMLFormElement>> {
         None
     }
 
     pub fn Width(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetWidth(&mut self, _width: &DOMString) -> ErrorResult {
+    pub fn SetWidth(&mut self, _width: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Height(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetHeight(&mut self, _height: &DOMString) -> ErrorResult {
+    pub fn SetHeight(&mut self, _height: DOMString) -> ErrorResult {
         Ok(())
     }
 
-    pub fn GetContentDocument(&self) -> Option<AbstractDocument> {
+    pub fn GetContentDocument(&self) -> Option<JS<Document>> {
         None
     }
 
-    pub fn GetContentWindow(&self) -> Option<@mut WindowProxy> {
+    pub fn GetContentWindow(&self) -> Option<JS<WindowProxy>> {
         None
     }
 
@@ -78,43 +144,44 @@ impl HTMLObjectElement {
         false
     }
 
-    pub fn Validity(&self) -> @mut ValidityState {
-        let global = self.htmlelement.element.node.owner_doc().document().window;
-        ValidityState::new(global)
+    pub fn Validity(&self) -> JS<ValidityState> {
+        let doc = self.htmlelement.element.node.owner_doc();
+        let doc = doc.get();
+        ValidityState::new(&doc.window)
     }
 
     pub fn ValidationMessage(&self) -> DOMString {
-        None
+        ~""
     }
 
     pub fn CheckValidity(&self) -> bool {
         false
     }
 
-    pub fn SetCustomValidity(&mut self, _error: &DOMString) {
+    pub fn SetCustomValidity(&mut self, _error: DOMString) {
     }
 
     pub fn Align(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAlign(&mut self, _align: &DOMString) -> ErrorResult {
+    pub fn SetAlign(&mut self, _align: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Archive(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetArchive(&mut self, _archive: &DOMString) -> ErrorResult {
+    pub fn SetArchive(&mut self, _archive: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Code(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCode(&mut self, _code: &DOMString) -> ErrorResult {
+    pub fn SetCode(&mut self, _code: DOMString) -> ErrorResult {
         Ok(())
     }
 
@@ -135,10 +202,10 @@ impl HTMLObjectElement {
     }
 
     pub fn Standby(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetStandby(&mut self, _standby: &DOMString) -> ErrorResult {
+    pub fn SetStandby(&mut self, _standby: DOMString) -> ErrorResult {
         Ok(())
     }
 
@@ -151,30 +218,30 @@ impl HTMLObjectElement {
     }
 
     pub fn CodeBase(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCodeBase(&mut self, _codebase: &DOMString) -> ErrorResult {
+    pub fn SetCodeBase(&mut self, _codebase: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn CodeType(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCodeType(&mut self, _codetype: &DOMString) -> ErrorResult {
+    pub fn SetCodeType(&mut self, _codetype: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Border(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetBorder(&mut self, _border: &DOMString) -> ErrorResult {
+    pub fn SetBorder(&mut self, _border: DOMString) -> ErrorResult {
         Ok(())
     }
 
-    pub fn GetSVGDocument(&self) -> Option<AbstractDocument> {
+    pub fn GetSVGDocument(&self) -> Option<JS<Document>> {
         None
     }
 }

@@ -3,26 +3,40 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use dom::bindings::codegen::HTMLTableElementBinding;
-use dom::bindings::utils::{DOMString, ErrorResult};
-use dom::document::AbstractDocument;
+use dom::bindings::codegen::InheritTypes::HTMLTableElementDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
 use dom::element::HTMLTableElementTypeId;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
-use dom::node::{AbstractNode, Node, ScriptView};
+use dom::node::{Node, ElementNodeTypeId};
+use servo_util::str::DOMString;
 
+#[deriving(Encodable)]
 pub struct HTMLTableElement {
     htmlelement: HTMLElement,
 }
 
+impl HTMLTableElementDerived for EventTarget {
+    fn is_htmltableelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLTableElementTypeId)) => true,
+            _ => false
+        }
+    }
+}
+
 impl HTMLTableElement {
-    pub fn new_inherited(localName: ~str, document: AbstractDocument) -> HTMLTableElement {
+    pub fn new_inherited(localName: DOMString, document: JS<Document>) -> HTMLTableElement {
         HTMLTableElement {
-            htmlelement: HTMLElement::new(HTMLTableElementTypeId, localName, document)
+            htmlelement: HTMLElement::new_inherited(HTMLTableElementTypeId, localName, document)
         }
     }
 
-    pub fn new(localName: ~str, document: AbstractDocument) -> AbstractNode<ScriptView> {
-        let element = HTMLTableElement::new_inherited(localName, document);
-        Node::reflect_node(@mut element, document, HTMLTableElementBinding::Wrap)
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLTableElement> {
+        let element = HTMLTableElement::new_inherited(localName, document.clone());
+        Node::reflect_node(~element, document, HTMLTableElementBinding::Wrap)
     }
 }
 
@@ -51,74 +65,74 @@ impl HTMLTableElement {
     }
 
     pub fn Align(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAlign(&self, _align: &DOMString) -> ErrorResult {
+    pub fn SetAlign(&self, _align: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Border(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetBorder(&self, _border: &DOMString) -> ErrorResult {
+    pub fn SetBorder(&self, _border: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Frame(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetFrame(&self, _frame: &DOMString) -> ErrorResult {
+    pub fn SetFrame(&self, _frame: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Rules(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetRules(&self, _rules: &DOMString) -> ErrorResult {
+    pub fn SetRules(&self, _rules: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Summary(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetSummary(&self, _summary: &DOMString) -> ErrorResult {
+    pub fn SetSummary(&self, _summary: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Width(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetWidth(&self, _width: &DOMString) -> ErrorResult {
+    pub fn SetWidth(&self, _width: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn BgColor(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetBgColor(&self, _bg_color: &DOMString) -> ErrorResult {
+    pub fn SetBgColor(&self, _bg_color: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn CellPadding(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCellPadding(&self, _cell_padding: &DOMString) -> ErrorResult {
+    pub fn SetCellPadding(&self, _cell_padding: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn CellSpacing(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCellSpacing(&self, _cell_spacing: &DOMString) -> ErrorResult {
+    pub fn SetCellSpacing(&self, _cell_spacing: DOMString) -> ErrorResult {
         Ok(())
     }
 }

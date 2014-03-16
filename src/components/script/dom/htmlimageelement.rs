@@ -3,49 +3,83 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use dom::bindings::codegen::HTMLImageElementBinding;
-use dom::bindings::utils::{DOMString, ErrorResult, null_str_as_empty};
-use dom::document::AbstractDocument;
-use dom::element::HTMLImageElementTypeId;
+use dom::bindings::codegen::InheritTypes::{NodeCast, HTMLImageElementDerived};
+use dom::bindings::codegen::InheritTypes::{ElementCast};
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
+use dom::element::{Element, HTMLImageElementTypeId};
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
-use dom::node::{AbstractNode, Node, ScriptView};
+use dom::node::{Node, ElementNodeTypeId, NodeHelpers, window_from_node};
 use extra::url::Url;
 use servo_util::geometry::to_px;
 use layout_interface::{ContentBoxQuery, ContentBoxResponse};
 use servo_net::image_cache_task;
-use servo_net::image_cache_task::ImageCacheTask;
-use servo_util::url::make_url;
-use servo_util::tree::ElementLike;
+use servo_util::url::parse_url;
+use servo_util::str::DOMString;
 
+use extra::serialize::{Encoder, Encodable};
+
+#[deriving(Encodable)]
 pub struct HTMLImageElement {
     htmlelement: HTMLElement,
+    priv extra: Untraceable,
+}
+
+struct Untraceable {
     image: Option<Url>,
 }
 
-impl HTMLImageElement {
-    pub fn new_inherited(localName: ~str, document: AbstractDocument) -> HTMLImageElement {
-        HTMLImageElement {
-            htmlelement: HTMLElement::new(HTMLImageElementTypeId, localName, document),
-            image: None,
-        }
+impl<S: Encoder> Encodable<S> for Untraceable {
+    fn encode(&self, _s: &mut S) {
     }
+}
 
-    pub fn new(localName: ~str, document: AbstractDocument) -> AbstractNode<ScriptView> {
-        let element = HTMLImageElement::new_inherited(localName, document);
-        Node::reflect_node(@mut element, document, HTMLImageElementBinding::Wrap)
+impl HTMLImageElementDerived for EventTarget {
+    fn is_htmlimageelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLImageElementTypeId)) => true,
+            _ => false
+        }
     }
 }
 
 impl HTMLImageElement {
+    pub fn new_inherited(localName: DOMString, document: JS<Document>) -> HTMLImageElement {
+        HTMLImageElement {
+            htmlelement: HTMLElement::new_inherited(HTMLImageElementTypeId, localName, document),
+            extra: Untraceable {
+                image: None,
+            }
+        }
+    }
+
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLImageElement> {
+        let element = HTMLImageElement::new_inherited(localName, document.clone());
+        Node::reflect_node(~element, document, HTMLImageElementBinding::Wrap)
+    }
+}
+
+impl HTMLImageElement {
+    pub fn image<'a>(&'a self) -> &'a Option<Url> {
+        &self.extra.image
+    }
+
     /// Makes the local `image` member match the status of the `src` attribute and starts
     /// prefetching the image. This method must be called after `src` is changed.
-    pub fn update_image(&mut self, image_cache: ImageCacheTask, url: Option<Url>) {
+    fn update_image(&mut self, value: Option<DOMString>, url: Option<Url>) {
         let elem = &mut self.htmlelement.element;
-        let src_opt = elem.get_attr("src").map(|x| x.to_str());
-        match src_opt {
-            None => {}
+        let document = elem.node.owner_doc();
+        let window = document.get().window.get();
+        let image_cache = &window.image_cache_task;
+        match value {
+            None => {
+                self.extra.image = None;
+            }
             Some(src) => {
-                let img_url = make_url(src, url);
-                self.image = Some(img_url.clone());
+                let img_url = parse_url(src, url);
+                self.extra.image = Some(img_url.clone());
 
                 // inform the image cache to load this, but don't store a
                 // handle.
@@ -57,51 +91,52 @@ impl HTMLImageElement {
         }
     }
 
-    pub fn AfterSetAttr(&mut self, name: &DOMString, _value: &DOMString) {
-        let name = null_str_as_empty(name);
+    pub fn AfterSetAttr(&mut self, name: DOMString, value: DOMString) {
         if "src" == name {
-            let document = self.htmlelement.element.node.owner_doc();
-            let window = document.document().window;
-            let url = window.page.url.as_ref().map(|&(ref url, _)| url.clone());
-            self.update_image(window.image_cache_task.clone(), url);
+            let document = self.htmlelement.element.node.owner_doc().clone();
+            let window = document.get().window.get();
+            let url = Some(window.get_url());
+            self.update_image(Some(value), url);
+        }
+    }
+
+    pub fn BeforeRemoveAttr(&mut self, name: DOMString) {
+        if "src" == name {
+            self.update_image(None, None);
         }
     }
 
     pub fn Alt(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAlt(&mut self, _alt: &DOMString) -> ErrorResult {
+    pub fn SetAlt(&mut self, _alt: DOMString) -> ErrorResult {
         Ok(())
     }
 
-    pub fn Src(&self, _abstract_self: AbstractNode<ScriptView>) -> DOMString {
-        None
+    pub fn Src(&self, _abstract_self: &JS<HTMLImageElement>) -> DOMString {
+        ~""
     }
 
-    pub fn SetSrc(&mut self,
-                  abstract_self: AbstractNode<ScriptView>,
-                  src: &DOMString) -> ErrorResult {
+    pub fn SetSrc(&mut self, abstract_self: &JS<HTMLImageElement>, src: DOMString) -> ErrorResult {
         let node = &mut self.htmlelement.element;
-        node.set_attr(abstract_self,
-                      &Some(~"src"),
-                      &Some(null_str_as_empty(src)));
+        node.set_attr(&ElementCast::from(abstract_self), ~"src", src.clone());
         Ok(())
     }
 
     pub fn CrossOrigin(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCrossOrigin(&mut self, _cross_origin: &DOMString) -> ErrorResult {
+    pub fn SetCrossOrigin(&mut self, _cross_origin: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn UseMap(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetUseMap(&mut self, _use_map: &DOMString) -> ErrorResult {
+    pub fn SetUseMap(&mut self, _use_map: DOMString) -> ErrorResult {
         Ok(())
     }
 
@@ -113,45 +148,43 @@ impl HTMLImageElement {
         Ok(())
     }
 
-    pub fn Width(&self, abstract_self: AbstractNode<ScriptView>) -> u32 {
-        let node = &self.htmlelement.element.node;
-        let page = node.owner_doc().document().window.page;
-        let (port, chan) = stream();
-        match page.query_layout(ContentBoxQuery(abstract_self, chan), port) {
+    pub fn Width(&self, abstract_self: &JS<HTMLImageElement>) -> u32 {
+        let node: JS<Node> = NodeCast::from(abstract_self);
+        let window = window_from_node(&node);
+        let page = window.get().page();
+        let (port, chan) = Chan::new();
+        let addr = node.to_trusted_node_address();
+        match page.query_layout(ContentBoxQuery(addr, chan), port) {
             ContentBoxResponse(rect) => {
                 to_px(rect.size.width) as u32
             }
         }
     }
 
-    pub fn SetWidth(&mut self,
-                    abstract_self: AbstractNode<ScriptView>,
-                    width: u32) -> ErrorResult {
-        let node = &mut self.htmlelement.element;
-        node.set_attr(abstract_self,
-                      &Some(~"width"),
-                      &Some(width.to_str()));
+    pub fn SetWidth(&mut self, abstract_self: &JS<HTMLImageElement>, width: u32) -> ErrorResult {
+        let mut elem: JS<Element> = ElementCast::from(abstract_self);
+        let mut elem_clone = elem.clone();
+        elem.get_mut().set_attr(&mut elem_clone, ~"width", width.to_str());
         Ok(())
     }
 
-    pub fn Height(&self, abstract_self: AbstractNode<ScriptView>) -> u32 {
+    pub fn Height(&self, abstract_self: &JS<HTMLImageElement>) -> u32 {
         let node = &self.htmlelement.element.node;
-        let page = node.owner_doc().document().window.page;
-        let (port, chan) = stream();
-        match page.query_layout(ContentBoxQuery(abstract_self, chan), port) {
+        let doc = node.owner_doc();
+        let page = doc.get().window.get().page();
+        let (port, chan) = Chan::new();
+        let this_node: JS<Node> = NodeCast::from(abstract_self);
+        let addr = this_node.to_trusted_node_address();
+        match page.query_layout(ContentBoxQuery(addr, chan), port) {
             ContentBoxResponse(rect) => {
                 to_px(rect.size.height) as u32
             }
         }
     }
 
-    pub fn SetHeight(&mut self,
-                     abstract_self: AbstractNode<ScriptView>,
-                     height: u32) -> ErrorResult {
+    pub fn SetHeight(&mut self, abstract_self: &JS<HTMLImageElement>, height: u32) -> ErrorResult {
         let node = &mut self.htmlelement.element;
-        node.set_attr(abstract_self,
-                      &Some(~"height"),
-                      &Some(height.to_str()));
+        node.set_attr(&ElementCast::from(abstract_self), ~"height", height.to_str());
         Ok(())
     }
 
@@ -168,18 +201,18 @@ impl HTMLImageElement {
     }
 
     pub fn Name(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetName(&mut self, _name: &DOMString) -> ErrorResult {
+    pub fn SetName(&mut self, _name: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Align(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAlign(&mut self, _align: &DOMString) -> ErrorResult {
+    pub fn SetAlign(&mut self, _align: DOMString) -> ErrorResult {
         Ok(())
     }
 
@@ -200,18 +233,18 @@ impl HTMLImageElement {
     }
 
     pub fn LongDesc(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetLongDesc(&mut self, _longdesc: &DOMString) -> ErrorResult {
+    pub fn SetLongDesc(&mut self, _longdesc: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Border(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetBorder(&mut self, _border: &DOMString) -> ErrorResult {
+    pub fn SetBorder(&mut self, _border: DOMString) -> ErrorResult {
         Ok(())
     }
 }

@@ -4,47 +4,46 @@
 
 use dom::bindings::codegen::DOMParserBinding;
 use dom::bindings::codegen::DOMParserBinding::SupportedTypeValues::{Text_html, Text_xml};
-use dom::bindings::utils::{DOMString, Fallible, Reflector, Reflectable, reflect_dom_object};
-use dom::bindings::utils::FailureUnknown;
-use dom::document::{AbstractDocument, Document, XML};
-use dom::htmldocument::HTMLDocument;
+use dom::bindings::js::JS;
+use dom::bindings::utils::{Reflector, Reflectable, reflect_dom_object};
+use dom::bindings::error::{Fallible, FailureUnknown};
+use dom::document::{Document, HTMLDocument, NonHTMLDocument};
 use dom::window::Window;
+use servo_util::str::DOMString;
 
-use js::jsapi::{JSContext, JSObject};
-
+#[deriving(Encodable)]
 pub struct DOMParser {
-    owner: @mut Window, //XXXjdm Document instead?
+    owner: JS<Window>, //XXXjdm Document instead?
     reflector_: Reflector
 }
 
 impl DOMParser {
-    pub fn new_inherited(owner: @mut Window) -> DOMParser {
+    pub fn new_inherited(owner: JS<Window>) -> DOMParser {
         DOMParser {
             owner: owner,
             reflector_: Reflector::new()
         }
     }
 
-    pub fn new(owner: @mut Window) -> @mut DOMParser {
-        reflect_dom_object(@mut DOMParser::new_inherited(owner), owner,
+    pub fn new(owner: &JS<Window>) -> JS<DOMParser> {
+        reflect_dom_object(~DOMParser::new_inherited(owner.clone()), owner,
                            DOMParserBinding::Wrap)
     }
 
-    pub fn Constructor(owner: @mut Window) -> Fallible<@mut DOMParser> {
+    pub fn Constructor(owner: &JS<Window>) -> Fallible<JS<DOMParser>> {
         Ok(DOMParser::new(owner))
     }
 
     pub fn ParseFromString(&self,
-                           _s: &DOMString,
+                           _s: DOMString,
                            ty: DOMParserBinding::SupportedType)
-                           -> Fallible<AbstractDocument> {
-        let cx = self.owner.get_cx();
+                           -> Fallible<JS<Document>> {
         match ty {
             Text_html => {
-                Ok(HTMLDocument::new(self.owner))
+                Ok(Document::new(&self.owner, None, HTMLDocument, Some(~"text/html")))
             }
             Text_xml => {
-                Ok(AbstractDocument::as_abstract(cx, @mut Document::new(self.owner, XML)))
+                Ok(Document::new(&self.owner, None, NonHTMLDocument, Some(~"text/xml")))
             }
             _ => {
                 Err(FailureUnknown)
@@ -60,13 +59,5 @@ impl Reflectable for DOMParser {
 
     fn mut_reflector<'a>(&'a mut self) -> &'a mut Reflector {
         &mut self.reflector_
-    }
-
-    fn wrap_object_shared(@mut self, _cx: *JSContext, _scope: *JSObject) -> *JSObject {
-        unreachable!();
-    }
-
-    fn GetParentObject(&self, _cx: *JSContext) -> Option<@mut Reflectable> {
-        Some(self.owner as @mut Reflectable)
     }
 }

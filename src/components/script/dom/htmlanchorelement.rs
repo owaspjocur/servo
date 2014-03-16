@@ -2,115 +2,146 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use dom::bindings::codegen::HTMLAnchorElementBinding;
+use dom::bindings::codegen::InheritTypes::HTMLAnchorElementDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
+use dom::element::HTMLAnchorElementTypeId;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
-use dom::bindings::utils::{DOMString, ErrorResult};
+use dom::node::{Node, ElementNodeTypeId};
+use servo_util::str::DOMString;
 
+#[deriving(Encodable)]
 pub struct HTMLAnchorElement {
     htmlelement: HTMLElement
 }
 
+impl HTMLAnchorElementDerived for EventTarget {
+    fn is_htmlanchorelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLAnchorElementTypeId)) => true,
+            _ => false
+        }
+    }
+}
+
 impl HTMLAnchorElement {
-    pub fn Href(&self) -> DOMString {
-        None
+    pub fn new_inherited(localName: DOMString, document: JS<Document>) -> HTMLAnchorElement {
+        HTMLAnchorElement {
+            htmlelement: HTMLElement::new_inherited(HTMLAnchorElementTypeId, localName, document)
+        }
     }
 
-    pub fn SetHref(&mut self, _href: &DOMString) -> ErrorResult {
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLAnchorElement> {
+        let element = HTMLAnchorElement::new_inherited(localName, document.clone());
+        Node::reflect_node(~element, document, HTMLAnchorElementBinding::Wrap)
+    }
+}
+
+impl HTMLAnchorElement {
+    pub fn Href(&self) -> DOMString {
+        ~""
+    }
+
+    pub fn SetHref(&mut self, _href: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Target(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetTarget(&self, _target: &DOMString) -> ErrorResult {
+    pub fn SetTarget(&self, _target: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Download(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetDownload(&self, _download: &DOMString) -> ErrorResult {
+    pub fn SetDownload(&self, _download: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Ping(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetPing(&self, _ping: &DOMString) -> ErrorResult {
+    pub fn SetPing(&self, _ping: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Rel(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetRel(&self, _rel: &DOMString) -> ErrorResult {
+    pub fn SetRel(&self, _rel: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Hreflang(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetHreflang(&self, _href_lang: &DOMString) -> ErrorResult {
+    pub fn SetHreflang(&self, _href_lang: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Type(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetType(&mut self, _type: &DOMString) -> ErrorResult {
+    pub fn SetType(&mut self, _type: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Text(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetText(&mut self, _text: &DOMString) -> ErrorResult {
+    pub fn SetText(&mut self, _text: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Coords(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCoords(&mut self, _coords: &DOMString) -> ErrorResult {
+    pub fn SetCoords(&mut self, _coords: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Charset(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCharset(&mut self, _charset: &DOMString) -> ErrorResult {
+    pub fn SetCharset(&mut self, _charset: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Name(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetName(&mut self, _name: &DOMString) -> ErrorResult {
+    pub fn SetName(&mut self, _name: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Rev(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetRev(&mut self, _rev: &DOMString) -> ErrorResult {
+    pub fn SetRev(&mut self, _rev: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Shape(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetShape(&mut self, _shape: &DOMString) -> ErrorResult {
+    pub fn SetShape(&mut self, _shape: DOMString) -> ErrorResult {
         Ok(())
     }
 }

@@ -2,59 +2,90 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use dom::bindings::utils::{DOMString, ErrorResult};
+use dom::bindings::codegen::HTMLAppletElementBinding;
+use dom::bindings::codegen::InheritTypes::HTMLAppletElementDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
+use dom::element::HTMLAppletElementTypeId;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
+use dom::node::{Node, ElementNodeTypeId};
+use servo_util::str::DOMString;
 
+#[deriving(Encodable)]
 pub struct HTMLAppletElement {
     htmlelement: HTMLElement
 }
 
+impl HTMLAppletElementDerived for EventTarget {
+    fn is_htmlappletelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLAppletElementTypeId)) => true,
+            _ => false
+        }
+    }
+}
+
 impl HTMLAppletElement {
-    pub fn Align(&self) -> DOMString {
-        None
+    pub fn new_inherited(localName: DOMString, document: JS<Document>) -> HTMLAppletElement {
+        HTMLAppletElement {
+            htmlelement: HTMLElement::new_inherited(HTMLAppletElementTypeId, localName, document)
+        }
     }
 
-    pub fn SetAlign(&mut self, _align: &DOMString) -> ErrorResult {
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLAppletElement> {
+        let element = HTMLAppletElement::new_inherited(localName, document.clone());
+        Node::reflect_node(~element, document, HTMLAppletElementBinding::Wrap)
+    }
+}
+
+impl HTMLAppletElement {
+    pub fn Align(&self) -> DOMString {
+        ~""
+    }
+
+    pub fn SetAlign(&mut self, _align: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Alt(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAlt(&self, _alt: &DOMString) -> ErrorResult {
+    pub fn SetAlt(&self, _alt: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Archive(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetArchive(&self, _archive: &DOMString) -> ErrorResult {
+    pub fn SetArchive(&self, _archive: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Code(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCode(&self, _code: &DOMString) -> ErrorResult {
+    pub fn SetCode(&self, _code: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn CodeBase(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCodeBase(&self, _code_base: &DOMString) -> ErrorResult {
+    pub fn SetCodeBase(&self, _code_base: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Height(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetHeight(&self, _height: &DOMString) -> ErrorResult {
+    pub fn SetHeight(&self, _height: DOMString) -> ErrorResult {
         Ok(())
     }
 
@@ -67,18 +98,18 @@ impl HTMLAppletElement {
     }
 
     pub fn Name(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetName(&mut self, _name: &DOMString) -> ErrorResult {
+    pub fn SetName(&mut self, _name: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Object(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetObject(&mut self, _object: &DOMString) -> ErrorResult {
+    pub fn SetObject(&mut self, _object: DOMString) -> ErrorResult {
         Ok(())
     }
 
@@ -91,10 +122,10 @@ impl HTMLAppletElement {
     }
 
     pub fn Width(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetWidth(&mut self, _width: &DOMString) -> ErrorResult {
+    pub fn SetWidth(&mut self, _width: DOMString) -> ErrorResult {
         Ok(())
     }
 }

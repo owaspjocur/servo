@@ -29,24 +29,24 @@ B := $(CFG_BUILD_DIR)
 
 MKFILE_DEPS := config.stamp $(call rwildcard,$(S)mk/,*)
 
-# Enable debug!() etc even without configure --enable-debug
-# The evaluation of these prints & their arguments is controlled
-# at runtime by the environment variable RUST_LOG.
-CFG_RUSTC_FLAGS += -Z debug-info -Z no-debug-borrows
+CFG_GCCISH_CFLAGS += -DRUST_DEBUG
 
 ifdef CFG_DISABLE_OPTIMIZE
   $(info cfg: disabling rustc optimization (CFG_DISABLE_OPTIMIZE))
   CFG_RUSTC_FLAGS +=
 else
-  CFG_RUSTC_FLAGS += -O
+  CFG_RUSTC_FLAGS += -O -Z no-debug-borrows
 endif
 
 ifdef CFG_ENABLE_DEBUG
   $(info cfg: enabling more debugging (CFG_ENABLE_DEBUG))
-  CFG_RUSTC_FLAGS +=
-  CFG_GCCISH_CFLAGS += -DRUST_DEBUG
+  CFG_RUSTC_FLAGS += -Z extra-debug-info
+  CFG_RUSTC_SELF_FLAGS += -Z extra-debug-info
 else
-  CFG_GCCISH_CFLAGS += -DRUST_NDEBUG
+  # Enable debug!() etc even without configure --enable-debug
+  # The evaluation of these prints & their arguments is controlled
+  # at runtime by the environment variable RUST_LOG.
+  CFG_RUSTC_FLAGS += -Z debug-info
 endif
 
 export CFG_RUSTC
@@ -56,10 +56,6 @@ export CFG_ENABLE_DEBUG
 export CFG_ENABLE_DEBUG_SKIA
 export RUSTC=$(CFG_RUSTC)
 export RUSTFLAGS=$(CFG_RUSTC_FLAGS)
-export CC=$(CFG_CC)
-export CXX=$(CFG_CXX)
-export LD=$(CFG_LD)
-export AR=$(CFG_AR)
 export RANLIB=$(CFG_RANLIB)
 export PYTHON=$(CFG_PYTHON2)
 export PATH=$(CFG_PATH)
@@ -96,11 +92,11 @@ $(S)config.stamp : $(S)configure $(S)Makefile.in
 ifneq ($(CFG_LOCAL_RUSTC),1)
 $(CFG_RUSTC): $(B)src/compiler/rust/rust-auto-clean-stamp
 	@$(call E, building rustc)
-	$(Q)CFG_RUSTC_FLAGS= CFG_ENABLE_DEBUG= RUSTFLAGS= $(MAKE) -C "$(CFG_BUILD_DIR)src/compiler/rust" CC=gcc CXX=g++ LD=ld AR=ar
+	$(Q)CFG_RUSTC_FLAGS= CFG_ENABLE_DEBUG= RUSTFLAGS="$(CFG_RUSTC_SELF_FLAGS)" $(MAKE) -C "$(CFG_BUILD_DIR)src/compiler/rust"
 
 clean-rust:
 	@$(call E, cleaning rustc)
-	$(Q)CFG_RUSTC_FLAGS= CFG_ENABLE_DEBUG= RUSTFLAGS= $(MAKE) -C "$(CFG_BUILD_DIR)src/compiler/rust" clean
+	$(Q)CFG_RUSTC_FLAGS= CFG_ENABLE_DEBUG= RUSTFLAGS="$(CFG_RUSTC_SELF_FLAGS)" $(MAKE) -C "$(CFG_BUILD_DIR)src/compiler/rust" clean
 
 else
 $(CFG_RUSTC):
@@ -118,7 +114,7 @@ rust: $(CFG_RUSTC)
 # Strip off submodule paths to determine "raw" submodule names.
 SUBMODULES=$(shell echo $(CFG_SUBMODULES) | perl -p -e 's![A-Za-z0-9_-]+/!!g')
 
-# Define e.g. PATH_rust-io-surface = platform/macos/rust-io-surface
+# Define e.g. PATH_skia = support/skia/skia
 $(foreach submodule,$(CFG_SUBMODULES),\
 $(eval PATH_$(shell echo $(submodule) | perl -p -e 's![A-Za-z0-9_-]+/!!g') = $(submodule)))
 
@@ -129,7 +125,7 @@ DEPS_$(1) =
 CFLAGS_$(1) = -O2
 
 #if global cflags set, inherit that
-ifneq ($$(CFLAGS),)
+ifdef CFLAGS
 	CFLAGS_$(1) = $$(CFLAGS) 
 endif
 
@@ -149,30 +145,42 @@ DEPS_SUBMODULES =
 $(foreach submodule,$(SUBMODULES),\
 $(eval $(call DEF_SUBMODULE_VARS,$(submodule))))
 
+# Handle rust submodule vars specially
+DONE_rust = $(CFG_RUSTC)
+
 # include submodule dependencies configuration
 include $(S)mk/sub.mk
+
+# Define how to compute approximate submodule dependencies.
+# TODO: this may be a bit brutish, but is there a better way?
+define DEF_SUBMODULE_DEPS
+ROUGH_DEPS_$(1)=$$(call rwildcard,$$(S)src/$$(PATH_$(1)),*h *c *cpp *rs *rc)
+DONE_DEPS_$(1)=$$(foreach dep,$$(DEPS_$(1)),$$(DONE_$$(dep)))
+# the main target for a submodule
+endef
 
 # Define how to make submodule targets
 define DEF_SUBMODULE_RULES
 
-ENV_RLDFLAGS_$(1) = $$(foreach dep,$$(DEPS_$(1)),-L $$(B)src/$$(PATH_$$(dep)) -L $$(B)src/$$(PATH_$$(dep))/.libs -L $$(B)src/$$(PATH_$$(dep))/src/.libs)
+ENV_RLDFLAGS_$(1) = -L $$(CFG_BUILD_HOME)workspace/lib/$$(CFG_TARGET_TRIPLES)
+ENV_RLDFLAGS_$(1) += $$(foreach dep,$$(DEPS_$(1)),-L $$(B)src/$$(PATH_$$(dep)) -L $$(B)src/$$(PATH_$$(dep))/.libs -L $$(B)src/$$(PATH_$$(dep))/src/.libs)
 
 # variables that depend on dependency definitions from sub.mk!
 ENV_CFLAGS_$(1) = CFLAGS="$$(CFLAGS_$(1))"
 ENV_RFLAGS_$(1) = RUSTFLAGS="$$(strip $$(CFG_RUSTC_FLAGS)) $$(ENV_RLDFLAGS_$(1))"
 
-# use a rough approximation of submodule dependencies to trigger calling submodule make
-# whenever a submodule changes
-# TODO: this may be a bit brutish, but is there a better way?
-ROUGH_DEPS_$(1)=$$(call rwildcard,$$(S)src/$$(PATH_$(1)),*h *c *cpp *rs *rc)
-DONE_DEPS_$(1)=$$(foreach dep,$$(DEPS_$(1)),$$(DONE_$$(dep)))
-# the main target for a submodule
-# --
-
 # Native builds do not depend on the rust compiler, so we can build them in parallel with rustc
+RUSTC_DEP_$(1)=
 ifneq "$$(filter $(1),$$(NATIVE_BUILDS))" "$(1)"
 RUSTC_DEP_$(1)=$$(CFG_RUSTC)
 endif
+
+$(eval $(call DEF_SUBMODULE_DEPS,$(1)))
+
+CROSS_COMPILER_CC = CC=$(CFG_CC)
+CROSS_COMPILER_CXX = CXX=$(CFG_CXX)
+CROSS_COMPILER_LD = LD=$(CFG_LD)
+CROSS_COMPILER_AR = AR=$(CFG_AR)
 
 $$(DONE_$(1)) : $$(DONE_DEPS_$(1)) $$(ROUGH_DEPS_$(1)) $$(RUSTC_DEP_$(1))
 #	@$$(call E, make: $(1))
@@ -181,11 +189,14 @@ $$(DONE_$(1)) : $$(DONE_DEPS_$(1)) $$(ROUGH_DEPS_$(1)) $$(RUSTC_DEP_$(1))
 #	@$$(call E, $(1) cflags= $$(ENV_CFLAGS_$(1)))
 #	@$$(call E, $(1) cxxflags= $$(ENV_CXXFLAGS_$(1)))
 #	@$$(call E, $(1) rflags= $$(ENV_RFLAGS_$(1)))
-
 	$$(Q) \
 	$$(ENV_CFLAGS_$(1)) \
 	$$(ENV_CXXFLAGS_$(1)) \
 	$$(ENV_RFLAGS_$(1)) \
+    $$(CROSS_COMPILER_CC) \
+    $$(CROSS_COMPILER_CXX) \
+    $$(CROSS_COMPILER_LD) \
+    $$(CROSS_COMPILER_AR) \
 	$$(MAKE) -C $$(B)src/$$(PATH_$(1)) && touch $$(DONE_$(1))
 
 # main submodule target
@@ -200,47 +211,53 @@ DONE_SUBMODULES = $(foreach submodule,$(SUBMODULES),$(DONE_$(submodule)))
 
 RFLAGS_util = $(strip $(CFG_RUSTC_FLAGS)) $(addprefix -L $(B)src/,$(DEPS_SUBMODULES))
 SRC_util = $(call rwildcard,$(S)src/components/util/,*.rs)
-CRATE_util = $(S)src/components/util/util.rc
+CRATE_util = $(S)src/components/util/util.rs
 DONE_util = $(B)src/components/util/libutil.dummy
 
 DEPS_util = $(CRATE_util) $(SRC_util) $(DONE_SUBMODULES)
 
 RFLAGS_net = $(strip $(CFG_RUSTC_FLAGS)) $(addprefix -L $(B)src/,$(DEPS_SUBMODULES)) -L $(B)src/components/util
 SRC_net = $(call rwildcard,$(S)src/components/net/,*.rs)
-CRATE_net = $(S)src/components/net/net.rc
+CRATE_net = $(S)src/components/net/net.rs
 DONE_net = $(B)src/components/net/libnet.dummy
 
 DEPS_net = $(CRATE_net) $(SRC_net) $(DONE_SUBMODULES) $(DONE_util)
 
 RFLAGS_msg = $(strip $(CFG_RUSTC_FLAGS)) $(addprefix -L $(B)src/,$(DEPS_SUBMODULES))
 SRC_msg = $(call rwildcard,$(S)src/components/msg/,*.rs)
-CRATE_msg = $(S)src/components/msg/msg.rc
+CRATE_msg = $(S)src/components/msg/msg.rs
 DONE_msg = $(B)src/components/msg/libmsg.dummy
 
 DEPS_msg = $(CRATE_msg) $(SRC_msg) $(DONE_SUBMODULES)
 
 RFLAGS_gfx = $(strip $(CFG_RUSTC_FLAGS)) $(addprefix -L $(B)src/,$(DEPS_SUBMODULES)) -L $(B)src/components/util -L $(B)src/components/style -L $(B)src/components/net -L $(B)src/components/msg
 SRC_gfx = $(call rwildcard,$(S)src/components/gfx/,*.rs)
-CRATE_gfx = $(S)src/components/gfx/gfx.rc
+CRATE_gfx = $(S)src/components/gfx/gfx.rs
 DONE_gfx = $(B)src/components/gfx/libgfx.dummy
 
 DEPS_gfx = $(CRATE_gfx) $(SRC_gfx) $(DONE_SUBMODULES) $(DONE_util) $(DONE_style) $(DONE_net) $(DONE_msg)
 
-RFLAGS_script = $(strip $(CFG_RUSTC_FLAGS)) $(addprefix -L $(B)src/,$(DEPS_SUBMODULES)) -L $(B)src/components/util -L $(B)src/components/style -L $(B)src/components/net -L $(B)src/components/gfx -L $(B)src/components/msg
-WEBIDL_script = $(call rwildcard,$(S)src/components/script/,*.webidl)
-AUTOGEN_SRC_script = $(patsubst %.webidl, %Binding.rs, $(WEBIDL_script))
+RFLAGS_script = $(strip $(CFG_RUSTC_FLAGS)) $(addprefix -L $(B)src/,$(DEPS_SUBMODULES)) -L $(B)src/components/util -L $(B)src/components/style -L $(B)src/components/net -L $(B)src/components/msg
+
+BINDINGS_SRC = $(S)src/components/script/dom/bindings/codegen
+WEBIDLS_SRC = $(S)src/components/script/dom/webidls
+
+WEBIDLS_script = $(call rwildcard, $(WEBIDLS_SRC), *.webidl)
+BINDINGS_script = $(patsubst %.webidl, %Binding.rs, $(WEBIDLS_script))
+AUTOGEN_SRC_script = $(foreach var, $(BINDINGS_script), $(subst $(WEBIDLS_SRC), $(BINDINGS_SRC), $(var)))
+
 SRC_script = $(call rwildcard,$(S)src/components/script/,*.rs) $(AUTOGEN_SRC_script)
-CRATE_script = $(S)src/components/script/script.rc
+CRATE_script = $(S)src/components/script/script.rs
 DONE_script = $(B)src/components/script/libscript.dummy
 
-DEPS_script = $(CRATE_script) $(SRC_script) $(DONE_SUBMODULES) $(DONE_util) $(DONE_style) $(DONE_net) $(DONE_gfx) $(DONE_msg)
+DEPS_script = $(CRATE_script) $(SRC_script) $(DONE_SUBMODULES) $(DONE_util) $(DONE_style) $(DONE_net) $(DONE_msg)
 
 RFLAGS_style = $(strip $(CFG_RUSTC_FLAGS)) $(addprefix -L $(B)src/,$(DEPS_SUBMODULES)) -L $(B)src/components/util
 MAKO_ZIP = $(S)src/components/style/Mako-0.8.1.zip
 MAKO_style = $(S)src/components/style/properties.rs
 MAKO_SRC_style = $(MAKO_style).mako
 SRC_style = $(call rwildcard,$(S)src/components/style/,*.rs) $(MAKO_style)
-CRATE_style = $(S)src/components/style/style.rc
+CRATE_style = $(S)src/components/style/style.rs
 DONE_style = $(B)src/components/style/libstyle.dummy
 
 DEPS_style = $(CRATE_style) $(SRC_style) $(DONE_SUBMODULES) $(DONE_util)
@@ -248,17 +265,22 @@ DEPS_style = $(CRATE_style) $(SRC_style) $(DONE_SUBMODULES) $(DONE_util)
 RFLAGS_servo = $(strip $(CFG_RUSTC_FLAGS)) $(addprefix -L $(B)src/,$(DEPS_SUBMODULES)) -L $(B)src/components/gfx -L $(B)src/components/util -L $(B)src/components/net -L $(B)src/components/script -L $(B)src/components/style -L $(B)src/components/msg
 
 SRC_servo = $(call rwildcard,$(S)src/components/main/,*.rs)
-CRATE_servo = $(S)src/components/main/servo.rc
+CRATE_servo = $(S)src/components/main/servo.rs
 
-DEPS_servo = $(CRATE_servo) $(SRC_servo) $(DONE_SUBMODULES) $(DONE_util) $(DONE_gfx) $(DONE_script) $(DONE_style) $(DONE_net) $(DONE_msg)
+DEPS_servo = $(CRATE_servo) $(SRC_servo) $(DONE_SUBMODULES) $(DONE_util) $(DONE_gfx) $(DONE_script) $(DONE_net) $(DONE_msg) $(DONE_style)
+
+SERVO_LIB_CRATES = util net msg gfx script style
+
+# rules that depend on having correct meta-target vars (DEPS_CLEAN, DEPS_servo, etc)
+# and SERVO_LIB_CRATES
+include $(S)mk/check.mk
+include $(S)mk/clean.mk
 
 .DEFAULT_GOAL := all
 .PHONY:	all
 all: servo
 
 # Servo helper libraries
-
-SERVO_LIB_CRATES = util net msg gfx script style
 
 define DEF_LIB_CRATE_RULES
 $$(DONE_$(1)):	$$(DEPS_$(1))
@@ -269,25 +291,18 @@ endef
 $(foreach lib_crate,$(SERVO_LIB_CRATES),\
 $(eval $(call DEF_LIB_CRATE_RULES,$(lib_crate))))
 
-# rules that depend on having correct meta-target vars (DEPS_CLEAN, DEPS_servo, etc)
-# and SERVO_LIB_CRATES
-include $(S)mk/check.mk
-include $(S)mk/clean.mk
-
-BINDINGS_SRC = $(S)/src/components/script/dom/bindings/codegen
-
 CACHE_DIR = $(BINDINGS_SRC)/_cache
 
 bindinggen_dependencies := $(addprefix $(BINDINGS_SRC)/, BindingGen.py Bindings.conf Configuration.py CodegenRust.py parser/WebIDL.py ParserResults.pkl)
 
-$(AUTOGEN_SRC_script): %Binding.rs: $(bindinggen_dependencies) \
-                                   %.webidl
+$(AUTOGEN_SRC_script): $(BINDINGS_SRC)/%Binding.rs: $(bindinggen_dependencies) \
+                                                    $(addprefix $(WEBIDLS_SRC)/, %.webidl)
 	@$(call E, "Maybe generating $(shell basename $@)...")
-	$(Q)PYTHONDONTWRITEBYTECODE=1 $(CFG_PYTHON2) $(BINDINGS_SRC)/pythonpath.py \
+	$(Q) $(CFG_PYTHON2) $(BINDINGS_SRC)/pythonpath.py \
 	  -I$(BINDINGS_SRC)/parser -I$(BINDINGS_SRC)/ply \
 	  -D$(BINDINGS_SRC) \
-	  $(BINDINGS_SRC)/BindingGen.py rs \
-	  $(BINDINGS_SRC)/Bindings.conf $*Binding $*.webidl
+	  $(BINDINGS_SRC)/BindingGen.py \
+	  $(BINDINGS_SRC)/Bindings.conf $*Binding $(addprefix $(WEBIDLS_SRC)/, $*.webidl)
 	$(Q)touch $@
 
 globalgen_dependencies := $(addprefix $(BINDINGS_SRC)/, GlobalGen.py Bindings.conf Configuration.py CodegenRust.py parser/WebIDL.py) $(CACHE_DIR)/.done
@@ -301,13 +316,13 @@ $(CACHE_DIR)/.done:
 	@touch $@
 
 $(BINDINGS_SRC)/ParserResults.pkl: $(globalgen_dependencies) \
-                                   $(WEBIDL_script)
-	$(Q)PYTHONDONTWRITEBYTECODE=1 $(CFG_PYTHON2) $(BINDINGS_SRC)/pythonpath.py \
+                                   $(WEBIDLS_script)
+	$(Q) $(CFG_PYTHON2) $(BINDINGS_SRC)/pythonpath.py \
 	  -I$(BINDINGS_SRC)/parser -I$(BINDINGS_SRC)/ply \
 	  -D$(BINDINGS_SRC) \
 	  $(BINDINGS_SRC)/GlobalGen.py $(BINDINGS_SRC)/Bindings.conf . \
 	  --cachedir=$(CACHE_DIR) \
-	  $(WEBIDL_script)
+	  $(WEBIDLS_script)
 
 # Servo binaries
 
@@ -318,7 +333,7 @@ servo:	$(DEPS_servo)
 else
 servo:  $(DEPS_servo)
 	@$(call E, compile: $@)
-	$(Q)$(RUSTC) $(RFLAGS_servo) -o $@ $< --lib
+	$(Q)$(RUSTC) $(RFLAGS_servo) -Z gen-crate-map -o $@ $< --lib
 endif
 
 # Darwin app packaging
@@ -333,6 +348,16 @@ package: servo
 	cp $(B)src/platform/macos/rust-cocoa/lib*.dylib Servo.app/Contents/MacOS/src/platform/macos/rust-cocoa/
 	cp $(B)src/support/azure/rust-azure/lib*.dylib Servo.app/Contents/MacOS/src/support/azure/rust-azure/
 
+else ifeq ($(CFG_OSTYPE),linux-androideabi)
+package: servo
+	mkdir -p sofile
+	-exec cp -f {} $(CFG_BUILD_HOME)sofile \;
+	find . ! \( \( -type d -path './sofile' -o -path './$(CFG_TARGET_TRIPLES)/src/compiler/rust' \) -prune \) -name '*.so' -type f | xargs cp -f -t $(CFG_BUILD_HOME)sofile
+	find $(CFG_RUST_HOME)/lib/rustc/$(CFG_TARGET_TRIPLES)/lib/ -name '*.so' -type f -size +1c | xargs cp -f -t $(CFG_BUILD_HOME)sofile
+	cd $(S)src/platform/android/servo-android-glue && make with-libs
+	cd $(CFG_BUILD_HOME)
+	cp $(S)src/platform/android/servo-android-glue/bin/ServoAndroid-debug.apk -t $(CFG_BUILD_HOME)
+
 else
 
 bindings: $(AUTOGEN_SRC_script)
@@ -342,18 +367,11 @@ package:
 
 endif
 
-# Build commands for backing up and restoring the Rust build.
-# Because Rust takes a very long time to build and changes infrequently,
-# the bots want to reuse it between builds. They can do so by running
-# `make backup-rust` and `make restore-rust`.
-#
-# backup-rust is run before the build directory is cleaned. if it fails, that's ok.
-#
-# restore-rust is run after configure and before invoking make. if it fails, we must abort.
+# Backup targets. These axist until build slaves are using Makefile.backup directly.
 
 .PHONY: backup-rust restore-rust
 backup-rust:
-	-mv $(B)src/compiler/rust ../$(CFG_TARGET_TRIPLES)
+	$(MAKE) -f $(S)Makefile.backup $@
 
 restore-rust:
-	if [ -d ../$(CFG_TARGET_TRIPLES) ]; then rm -rf $(B)src/compiler/rust; mv ../$(CFG_TARGET_TRIPLES) $(B)src/compiler/rust; fi
+	$(MAKE) -f $(S)Makefile.backup $@

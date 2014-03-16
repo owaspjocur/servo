@@ -40,7 +40,7 @@ servo-test: $(DEPS_servo)
 
 reftest: $(S)src/test/harness/reftest/reftest.rs servo
 	@$(call E, compile: $@)
-	$(Q)$(RUSTC) -o $@ $<
+	$(Q)$(RUSTC) -L$(B)/src/support/png/rust-png/ -L$(B)/src/support/png/libpng/ -o $@ $<
 
 contenttest: $(S)src/test/harness/contenttest/contenttest.rs servo
 	@$(call E, compile: $@)
@@ -58,11 +58,11 @@ check-test:
 
 ifeq ($(CFG_OSTYPE),apple-darwin)
 .PHONY: check
-check: $(DEPS_CHECK_TARGETS_FAST) check-servo check-content tidy
+check: $(DEPS_CHECK_TARGETS_FAST) check-servo check-content check-ref tidy
 	@$(call E, check: all)
 
 .PHONY: check-all
-check-all: $(DEPS_CHECK_TARGETS_ALL) check-servo check-content tidy
+check-all: $(DEPS_CHECK_TARGETS_ALL) check-servo check-content check-ref tidy
 	@$(call E, check: all)
 else
 .PHONY: check
@@ -81,13 +81,15 @@ check-servo: $(foreach lib_crate,$(SERVO_LIB_CRATES),check-servo-$(lib_crate)) s
 
 .PHONY: check-ref
 check-ref: reftest
-	@$(call E, check: reftests)
+	@$(call E, check: reftests with GPU rendering)
 	$(Q)./reftest $(S)src/test/ref/*.list
+	@$(call E, check: reftests with CPU rendering)
+	$(Q)./reftest $(S)src/test/ref/*.list -- -c
 
 .PHONY: check-content
 check-content: contenttest
 	@$(call E, check: contenttests)
-	$(Q)./contenttest --source-dir=$(S)src/test/html/content $(TESTNAME)
+	$(Q)./contenttest --source-dir=$(S)src/test/content $(TESTNAME)
 
 .PHONY: tidy
 tidy:

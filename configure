@@ -308,6 +308,14 @@ CFG_SELF=${CFG_SRC_DIR}$(basename $0)
 CFG_CONFIGURE_ARGS="$@"
 CFG_PATH=$PATH
 
+if [ -n "$CFG_DISABLE_MANAGE_SUBMODULES" ]
+then
+    if git status $CFG_SRC_DIR/src/compiler $CFG_SRC_DIR/src/support $CFG_SRC_DIR/src/platform \
+        | grep -q 'modified:.*modified content'; then
+        err "Some submodule has a dirty working tree.  See 'git status'."
+    fi
+fi
+
 OPTIONS=""
 HELP=0
 if [ "$1" = "--help" ]
@@ -366,7 +374,7 @@ probe_need CFG_AUTOCONF213 autoconf213  \
 step_msg "looking for build programs"
 case ${TARGET_OSTYPE} in
     android)
-        CFG_PATH="${CFG_ANDROID_CROSS_PATH}/bin":$PATH
+        CFG_PATH=$PATH:"${CFG_ANDROID_CROSS_PATH}/bin"
         OLD_PATH=$PATH
         export PATH=${CFG_PATH}
 
@@ -448,9 +456,8 @@ then
     need_ok "git failed"
 
     msg "git: submodule clobber"
-    "${CFG_GIT}" submodule foreach --recursive git clean -dxf
-    need_ok "git failed"
-    "${CFG_GIT}" submodule foreach --recursive git checkout .
+    "${CFG_GIT}" submodule foreach --recursive \
+      'if [ -n "$(git status --porcelain)" ] ; then echo "Refusing to clobber $path" ; else git clean -dxf ; git checkout . ; fi'
     need_ok "git failed"
 
     cd ${CFG_BUILD_DIR}
@@ -481,45 +488,47 @@ CFG_SUBMODULES="\
     support/alert/rust-alert \
     support/azure/rust-azure \
     support/css/rust-cssparser \
-    support/geom/rust-geom \
+    support/encoding/rust-encoding \
     support/harfbuzz/rust-harfbuzz \
     support/http/rust-http \
     support/hubbub/libhubbub \
     support/hubbub/rust-hubbub \
-    support/layers/rust-layers \
     support/libparserutils/libparserutils \
     support/nss/nspr \
     support/nss/nss \
-    support/opengles/rust-opengles \
-    support/sharegl/sharegl \
     support/skia/skia \
     support/spidermonkey/mozjs \
     support/spidermonkey/rust-mozjs \
     support/stb-image/rust-stb-image \
     support/png/libpng \
-    support/png/rust-png"
+    support/png/rust-png \
+    support/geom/rust-geom \
+    support/layers/rust-layers \
+    support/opengles/rust-opengles \
+    support/sharegl/sharegl"
 
 if [ $CFG_OSTYPE = "apple-darwin" ]
 then
 CFG_SUBMODULES="\
-    support/glfw/glfw \
-    support/glfw/glfw-rs \
-    platform/macos/rust-cocoa \
     platform/macos/rust-core-foundation \
     platform/macos/rust-core-graphics \
     platform/macos/rust-core-text \
     platform/macos/rust-io-surface \
+    support/glfw/glfw \
+    support/glfw/glfw-rs \
+    platform/macos/rust-cocoa \
     ${CFG_SUBMODULES}"
 fi
 
 if [ $CFG_OSTYPE = "unknown-linux-gnu" ]
 then
 CFG_SUBMODULES="\
+    platform/linux/rust-xlib \
+    platform/linux/fontconfig \
     support/glfw/glfw \
     support/glfw/glfw-rs \
     platform/linux/rust-fontconfig \
     platform/linux/rust-freetype \
-    platform/linux/rust-xlib \
     ${CFG_SUBMODULES}"
 fi
 
@@ -527,6 +536,7 @@ if [ $CFG_OSTYPE = "linux-androideabi" ]
 then
 CFG_SUBMODULES="\
     support/glut/rust-glut \
+    support/egl/rust-egl \
     platform/android/libexpat \
     platform/android/libfreetype2 \
     platform/android/fontconfig \
@@ -606,13 +616,13 @@ then
     cd ${CFG_BUILD_DIR}src/compiler/rust
     RUST_CONFIGURE_ARGS="--enable-debug"
     if [ $CFG_OSTYPE = "linux-androideabi" ]; then
-        RUST_CONFIGURE_ARGS="--target-triples=arm-linux-androideabi --android-cross-path=${CFG_ANDROID_CROSS_PATH}"
+        RUST_CONFIGURE_ARGS="--target=arm-linux-androideabi --android-cross-path=${CFG_ANDROID_CROSS_PATH}"
     fi
     ${CFG_SRC_DIR}src/compiler/rust/configure ${RUST_CONFIGURE_ARGS}
     cd ${CFG_BUILD_DIR}
 fi
 
-#fontconfig expects to use an installed freetype, but we want to override that behavior to use our version
+# fontconfig expects to use an installed freetype, but we want to use our version on Android
 if [ $CFG_OSTYPE = "linux-androideabi" ]
 then
     export FREETYPE_CFLAGS="-I${CFG_SRC_DIR}src/platform/android/libfreetype2/include -I${CFG_BUILD_DIR}src/platform/android/libfreetype2/include"
@@ -670,6 +680,19 @@ do
             CONFIGURE_ARGS="${CONFIGURE_ARGS} --host=arm-linux"
             CONFIGURE_ARGS="${CONFIGURE_ARGS} --with-sysroot=${CFG_ANDROID_CROSS_PATH}/sysroot"
             CONFIGURE_ARGS="${CONFIGURE_ARGS} --without-zlib"
+            CONFIGURE_ARGS="${CONFIGURE_ARGS} ${EXTRA_CONFIGURE_ARGS}"
+            ;;
+        platform/linux/fontconfig)
+            CONFIGURE_SCRIPT="${CFG_SRC_DIR}src/${i}/autogen.sh"
+            CONFIGURE_ARGS="${CONFIGURE_ARGS} --sysconfdir=/etc"
+            CONFIGURE_ARGS="${CONFIGURE_ARGS} --localstatedir=/var"
+            CONFIGURE_ARGS="${CONFIGURE_ARGS} --disable-docs"
+            CONFIGURE_ARGS="${CONFIGURE_ARGS} --disable-shared" # work around Rust #12557
+            if [ -f /etc/redhat-release ]; then
+                # Some RedHat-based distros (including our CentOS 6 build machines) are missing
+                # pkg-config files for expat: https://bugzilla.redhat.com/show_bug.cgi?id=833338
+                CONFIGURE_ARGS="${CONFIGURE_ARGS} --with-expat=/usr"
+            fi
             CONFIGURE_ARGS="${CONFIGURE_ARGS} ${EXTRA_CONFIGURE_ARGS}"
             ;;
         platform/android/fontconfig)

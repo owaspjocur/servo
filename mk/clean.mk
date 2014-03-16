@@ -43,13 +43,13 @@ clean-gfx:
 
 clean-script:
 	@$(call E, "cleaning script")
-	$(Q)cd $(B)/src/components/script/ && rm -rf libscript*.dylib libscript*.dSYM libscript*.so $(DONE_script)
+	$(Q)cd $(B)/src/components/script/ && rm -rf libscript*.dylib libscript*.dSYM libscript*.so $(DONE_script) && find $(S)/src/components/script/ -name \*.pyc -delete
 
 clean-style:
 	@$(call E, "cleaning style")
 	$(Q)cd $(B)/src/components/style/ && rm -rf libstyle*.dylib libstyle*.dSYM libstyle*.so $(DONE_style)
 
-clean-servo: clean-gfx clean-util clean-net clean-script clean-msg
+clean-servo: clean-gfx clean-util clean-net clean-script clean-msg clean-style
 	@$(call E, "cleaning servo")
 	$(Q)rm -f servo servo-test $(foreach lib_crate,$(SERVO_LIB_CRATES),servo-test-$(lib_crate)) libservo*.so
-	$(Q)cd $(BINDINGS_SRC) && rm -f *.pkl
+	$(Q)cd $(BINDINGS_SRC) && rm -f *.pkl *.rs

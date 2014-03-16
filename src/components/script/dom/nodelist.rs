@@ -3,45 +3,46 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use dom::bindings::codegen::NodeListBinding;
+use dom::bindings::js::JS;
 use dom::bindings::utils::{Reflectable, Reflector, reflect_dom_object};
-use dom::node::{AbstractNode, ScriptView};
+use dom::node::{Node, NodeHelpers};
 use dom::window::Window;
 
-use js::jsapi::{JSObject, JSContext};
-
+#[deriving(Encodable)]
 enum NodeListType {
-    Simple(~[AbstractNode<ScriptView>]),
-    Children(AbstractNode<ScriptView>)
+    Simple(~[JS<Node>]),
+    Children(JS<Node>)
 }
 
+#[deriving(Encodable)]
 pub struct NodeList {
     list_type: NodeListType,
     reflector_: Reflector,
-    window: @mut Window,
+    window: JS<Window>
 }
 
 impl NodeList {
-    pub fn new_inherited(window: @mut Window,
+    pub fn new_inherited(window: JS<Window>,
                          list_type: NodeListType) -> NodeList {
         NodeList {
             list_type: list_type,
             reflector_: Reflector::new(),
-            window: window,
+            window: window
         }
     }
 
-    pub fn new(window: @mut Window,
-               list_type: NodeListType) -> @mut NodeList {
-        reflect_dom_object(@mut NodeList::new_inherited(window, list_type),
+    pub fn new(window: &JS<Window>,
+               list_type: NodeListType) -> JS<NodeList> {
+        reflect_dom_object(~NodeList::new_inherited(window.clone(), list_type),
                            window, NodeListBinding::Wrap)
     }
 
-    pub fn new_simple_list(window: @mut Window, elements: ~[AbstractNode<ScriptView>]) -> @mut NodeList {
+    pub fn new_simple_list(window: &JS<Window>, elements: ~[JS<Node>]) -> JS<NodeList> {
         NodeList::new(window, Simple(elements))
     }
 
-    pub fn new_child_list(window: @mut Window, node: AbstractNode<ScriptView>) -> @mut NodeList {
-        NodeList::new(window, Children(node))
+    pub fn new_child_list(window: &JS<Window>, node: &JS<Node>) -> JS<NodeList> {
+        NodeList::new(window, Children(node.clone()))
     }
 
     pub fn Length(&self) -> u32 {
@@ -51,15 +52,15 @@ impl NodeList {
         }
     }
 
-    pub fn Item(&self, index: u32) -> Option<AbstractNode<ScriptView>> {
+    pub fn Item(&self, index: u32) -> Option<JS<Node>> {
         match self.list_type {
             _ if index >= self.Length() => None,
-            Simple(ref elems) => Some(elems[index]),
+            Simple(ref elems) => Some(elems[index].clone()),
             Children(ref node) => node.children().nth(index as uint)
         }
     }
 
-    pub fn IndexedGetter(&self, index: u32, found: &mut bool) -> Option<AbstractNode<ScriptView>> {
+    pub fn IndexedGetter(&self, index: u32, found: &mut bool) -> Option<JS<Node>> {
         let item = self.Item(index);
         *found = item.is_some();
         item
@@ -73,13 +74,5 @@ impl Reflectable for NodeList {
 
     fn mut_reflector<'a>(&'a mut self) -> &'a mut Reflector {
         &mut self.reflector_
-    }
-
-    fn wrap_object_shared(@mut self, _cx: *JSContext, _scope: *JSObject) -> *JSObject {
-        unreachable!();
-    }
-
-    fn GetParentObject(&self, _cx: *JSContext) -> Option<@mut Reflectable> {
-        Some(self.window as @mut Reflectable)
     }
 }

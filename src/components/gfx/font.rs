@@ -10,11 +10,11 @@ use geom::{Point2D, Rect, Size2D};
 use std::cast;
 use std::ptr;
 use std::str;
-use std::vec;
+use std::rc::Rc;
+use std::cell::RefCell;
 use servo_util::cache::{Cache, HashCache};
 use servo_util::range::Range;
-use servo_util::time::ProfilerChan;
-use style::computed_values::text_decoration;
+use style::computed_values::{text_decoration, font_weight, font_style};
 
 use color::Color;
 use font_context::FontContext;
@@ -40,7 +40,7 @@ pub trait FontHandleMethods {
     fn family_name(&self) -> ~str;
     fn face_name(&self) -> ~str;
     fn is_italic(&self) -> bool;
-    fn boldness(&self) -> CSSFontWeight;
+    fn boldness(&self) -> font_weight::T;
 
     fn clone_with_style(&self, fctx: &FontContextHandle, style: &UsedFontStyle)
                      -> Result<FontHandle, ()>;
@@ -72,9 +72,10 @@ impl FontTableTagConversions for FontTableTag {
 }
 
 pub trait FontTableMethods {
-    fn with_buffer(&self, &fn(*u8, uint));
+    fn with_buffer(&self, |*u8, uint|);
 }
 
+#[deriving(Clone)]
 pub struct FontMetrics {
     underline_size:   Au,
     underline_offset: Au,
@@ -88,29 +89,6 @@ pub struct FontMetrics {
     max_advance:      Au
 }
 
-// TODO(Issue #200): use enum from CSS bindings for 'font-weight'
-#[deriving(Clone, Eq)]
-pub enum CSSFontWeight {
-    FontWeight100,
-    FontWeight200,
-    FontWeight300,
-    FontWeight400,
-    FontWeight500,
-    FontWeight600,
-    FontWeight700,
-    FontWeight800,
-    FontWeight900,
-}
-
-impl CSSFontWeight {
-    pub fn is_bold(self) -> bool {
-        match self {
-            FontWeight900 | FontWeight800 | FontWeight700 | FontWeight600 => true,
-            _ => false
-        }
-    }
-}
-
 // TODO(Issue #179): eventually this will be split into the specified
 // and used font styles.  specified contains uninterpreted CSS font
 // property values, while 'used' is attached to gfx::Font to descript
@@ -120,21 +98,14 @@ impl CSSFontWeight {
 #[deriving(Clone, Eq)]
 pub struct FontStyle {
     pt_size: f64,
-    weight: CSSFontWeight,
-    italic: bool,
-    oblique: bool,
-    families: ~str,
+    weight: font_weight::T,
+    style: font_style::T,
+    families: ~[~str],
     // TODO(Issue #198): font-stretch, text-decoration, font-variant, size-adjust
 }
 
 pub type SpecifiedFontStyle = FontStyle;
 pub type UsedFontStyle = FontStyle;
-
-// FIXME: move me to layout
-struct ResolvedFont {
-    group: @FontGroup,
-    style: SpecifiedFontStyle,
-}
 
 // FontDescriptor serializes a specific font and used font style
 // options, such as point size.
@@ -171,15 +142,15 @@ pub enum FontSelector {
 // The ordering of font instances is mainly decided by the CSS
 // 'font-family' property. The last font is a system fallback font.
 pub struct FontGroup {
-    families: @str,
+    families: ~[~str],
     // style of the first western font in group, which is
     // used for purposes of calculating text run metrics.
     style: UsedFontStyle,
-    fonts: ~[@mut Font],
+    fonts: ~[Rc<RefCell<Font>>]
 }
 
 impl FontGroup {
-    pub fn new(families: @str, style: &UsedFontStyle, fonts: ~[@mut Font]) -> FontGroup {
+    pub fn new(families: ~[~str], style: &UsedFontStyle, fonts: ~[Rc<RefCell<Font>>]) -> FontGroup {
         FontGroup {
             families: families,
             style: (*style).clone(),
@@ -195,7 +166,9 @@ impl FontGroup {
         assert!(self.fonts.len() > 0);
 
         // TODO(Issue #177): Actually fall back through the FontGroup when a font is unsuitable.
-        return TextRun::new(self.fonts[0], text, decoration);
+        self.fonts[0].borrow().with_mut(|font| {
+            TextRun::new(font, text.clone(), decoration)
+        })
     }
 }
 
@@ -218,7 +191,7 @@ impl RunMetrics {
         // ascent+descent and advance is sometimes too generous and
         // looking at actual glyph extents can yield a tighter box.
 
-        RunMetrics { 
+        RunMetrics {
             advance_width: advance,
             bounding_box: bounds,
             ascent: ascent,
@@ -234,66 +207,61 @@ and the renderer can use it to render text.
 pub struct Font {
     priv handle: FontHandle,
     priv azure_font: Option<ScaledFont>,
-    priv shaper: Option<@Shaper>,
+    priv shaper: Option<Shaper>,
     style: UsedFontStyle,
     metrics: FontMetrics,
     backend: BackendType,
-    profiler_chan: ProfilerChan,
     shape_cache: HashCache<~str, Arc<GlyphStore>>,
     glyph_advance_cache: HashCache<u32, FractionalPixel>,
 }
 
-impl Font {
+impl<'a> Font {
     pub fn new_from_buffer(ctx: &FontContext,
                        buffer: ~[u8],
                        style: &SpecifiedFontStyle,
-                       backend: BackendType,
-                       profiler_chan: ProfilerChan)
-            -> Result<@mut Font, ()> {
+                       backend: BackendType)
+            -> Result<Rc<RefCell<Font>>, ()> {
         let handle = FontHandleMethods::new_from_buffer(&ctx.handle, buffer, style);
         let handle: FontHandle = if handle.is_ok() {
             handle.unwrap()
         } else {
             return Err(handle.unwrap_err());
         };
-        
-        let metrics = handle.get_metrics();
-        // TODO(Issue #179): convert between specified and used font style here?
 
-        return Ok(@mut Font {
+        let metrics = handle.get_metrics();
+
+        return Ok(Rc::from_mut(RefCell::new(Font {
             handle: handle,
             azure_font: None,
             shaper: None,
             style: (*style).clone(),
             metrics: metrics,
             backend: backend,
-            profiler_chan: profiler_chan,
             shape_cache: HashCache::new(),
             glyph_advance_cache: HashCache::new(),
-        });
+        })));
     }
 
     pub fn new_from_adopted_handle(_fctx: &FontContext, handle: FontHandle,
-                               style: &SpecifiedFontStyle, backend: BackendType,
-                               profiler_chan: ProfilerChan) -> @mut Font {
+                               style: &SpecifiedFontStyle, backend: BackendType)
+                               -> Font {
         let metrics = handle.get_metrics();
 
-        @mut Font {
+        Font {
             handle: handle,
             azure_font: None,
             shaper: None,
             style: (*style).clone(),
             metrics: metrics,
             backend: backend,
-            profiler_chan: profiler_chan,
             shape_cache: HashCache::new(),
             glyph_advance_cache: HashCache::new(),
         }
     }
 
     pub fn new_from_existing_handle(fctx: &FontContext, handle: &FontHandle,
-                                style: &SpecifiedFontStyle, backend: BackendType,
-                                profiler_chan: ProfilerChan) -> Result<@mut Font,()> {
+                                style: &SpecifiedFontStyle, backend: BackendType)
+                                -> Result<Rc<RefCell<Font>>,()> {
 
         // TODO(Issue #179): convert between specified and used font style here?
         let styled_handle = match handle.clone_with_style(&fctx.handle, style) {
@@ -301,19 +269,22 @@ impl Font {
             Err(()) => return Err(())
         };
 
-        return Ok(Font::new_from_adopted_handle(fctx, styled_handle, style, backend, profiler_chan));
+        return Ok(Rc::from_mut(RefCell::new(Font::new_from_adopted_handle(fctx, styled_handle, style, backend))));
     }
 
-    fn get_shaper(@mut self) -> @Shaper {
+    fn make_shaper(&'a mut self) -> &'a Shaper {
         // fast path: already created a shaper
         match self.shaper {
-            Some(shaper) => { return shaper; },
+            Some(ref shaper) => { 
+                let s: &'a Shaper = shaper;
+                return s; 
+            },
             None => {}
         }
 
-        let shaper = @Shaper::new(self);
+        let shaper = Shaper::new(self);
         self.shaper = Some(shaper);
-        shaper
+        self.shaper.get_ref()
     }
 
     pub fn get_table_for_tag(&self, tag: FontTableTag) -> Option<FontTable> {
@@ -366,10 +337,9 @@ impl Font {
 
 
 impl Font {
-    #[fixed_stack_segment]
     pub fn draw_text_into_context(&mut self,
                               rctx: &RenderContext,
-                              run: &TextRun,
+                              run: &~TextRun,
                               range: &Range,
                               baseline_origin: Point2D<Au>,
                               color: Color) {
@@ -416,7 +386,7 @@ impl Font {
         if azglyph_buf_len == 0 { return; } // Otherwise the Quartz backend will assert.
 
         let glyphbuf = struct__AzGlyphBuffer {
-            mGlyphs: vec::raw::to_ptr(azglyphs),
+            mGlyphs: azglyphs.as_ptr(),
             mNumGlyphs: azglyph_buf_len as uint32_t            
         };
 
@@ -454,13 +424,15 @@ impl Font {
         RunMetrics::new(advance, self.metrics.ascent, self.metrics.descent)
     }
 
-    pub fn shape_text(@mut self, text: ~str, is_whitespace: bool) -> Arc<GlyphStore> {
-        let shaper = self.get_shaper();
-        do self.shape_cache.find_or_create(&text) |txt| {
+    pub fn shape_text(&mut self, text: ~str, is_whitespace: bool) -> Arc<GlyphStore> {
+
+        //FIXME (ksh8281)
+        self.make_shaper();
+        self.shape_cache.find_or_create(&text, |txt| {
             let mut glyphs = GlyphStore::new(text.char_len(), is_whitespace);
-            shaper.shape_text(*txt, &mut glyphs);
+            self.shaper.get_ref().shape_text(*txt, &mut glyphs);
             Arc::new(glyphs)
-        }
+        })
     }
 
     pub fn get_descriptor(&self) -> FontDescriptor {
@@ -472,12 +444,12 @@ impl Font {
     }
 
     pub fn glyph_h_advance(&mut self, glyph: GlyphIndex) -> FractionalPixel {
-        do self.glyph_advance_cache.find_or_create(&glyph) |glyph| {
+        self.glyph_advance_cache.find_or_create(&glyph, |glyph| {
             match self.handle.glyph_h_advance(*glyph) {
                 Some(adv) => adv,
                 None => /* FIXME: Need fallback strategy */ 10f64 as FractionalPixel
             }
-        }
+        })
     }
 }
 
@@ -522,7 +494,7 @@ fn should_get_glyph_advance_stress() {
     for iter::repeat(100) {
         let (chan, port) = pipes::stream();
         ports += [@port];
-        do task::spawn {
+        spawn_named("should_get_glyph_advance_stress") {
             let fctx = @FontContext();
             let matcher = @FontMatcher(fctx);
             let _font = matcher.get_test_font();

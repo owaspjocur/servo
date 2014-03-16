@@ -3,26 +3,40 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use dom::bindings::codegen::HTMLTableColElementBinding;
-use dom::bindings::utils::{DOMString, ErrorResult};
-use dom::document::AbstractDocument;
+use dom::bindings::codegen::InheritTypes::HTMLTableColElementDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
 use dom::element::HTMLTableColElementTypeId;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
-use dom::node::{AbstractNode, Node, ScriptView};
+use dom::node::{Node, ElementNodeTypeId};
+use servo_util::str::DOMString;
 
+#[deriving(Encodable)]
 pub struct HTMLTableColElement {
     htmlelement: HTMLElement,
 }
 
+impl HTMLTableColElementDerived for EventTarget {
+    fn is_htmltablecolelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLTableColElementTypeId)) => true,
+            _ => false
+        }
+    }
+}
+
 impl HTMLTableColElement {
-    pub fn new_inherited(localName: ~str, document: AbstractDocument) -> HTMLTableColElement {
+    pub fn new_inherited(localName: DOMString, document: JS<Document>) -> HTMLTableColElement {
         HTMLTableColElement {
-            htmlelement: HTMLElement::new(HTMLTableColElementTypeId, localName, document)
+            htmlelement: HTMLElement::new_inherited(HTMLTableColElementTypeId, localName, document)
         }
     }
 
-    pub fn new(localName: ~str, document: AbstractDocument) -> AbstractNode<ScriptView> {
-        let element = HTMLTableColElement::new_inherited(localName, document);
-        Node::reflect_node(@mut element, document, HTMLTableColElementBinding::Wrap)
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLTableColElement> {
+        let element = HTMLTableColElement::new_inherited(localName, document.clone());
+        Node::reflect_node(~element, document, HTMLTableColElementBinding::Wrap)
     }
 }
 
@@ -36,42 +50,42 @@ impl HTMLTableColElement {
     }
 
     pub fn Align(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAlign(&mut self, _align: &DOMString) -> ErrorResult {
+    pub fn SetAlign(&mut self, _align: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Ch(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCh(&mut self, _ch: &DOMString) -> ErrorResult {
+    pub fn SetCh(&mut self, _ch: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn ChOff(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetChOff(&mut self, _ch_off: &DOMString) -> ErrorResult {
+    pub fn SetChOff(&mut self, _ch_off: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn VAlign(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetVAlign(&mut self, _v_align: &DOMString) -> ErrorResult {
+    pub fn SetVAlign(&mut self, _v_align: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Width(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetWidth(&mut self, _width: &DOMString) -> ErrorResult {
+    pub fn SetWidth(&mut self, _width: DOMString) -> ErrorResult {
         Ok(())
     }
 }

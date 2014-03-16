@@ -3,52 +3,65 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use dom::bindings::codegen::HTMLScriptElementBinding;
-use dom::bindings::utils::{DOMString, ErrorResult};
-use dom::document::AbstractDocument;
+use dom::bindings::codegen::InheritTypes::HTMLScriptElementDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
 use dom::element::HTMLScriptElementTypeId;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
-use dom::node::{AbstractNode, Node, ScriptView};
-use servo_util::tree::ElementLike;
+use dom::node::{Node, ElementNodeTypeId};
+use servo_util::str::DOMString;
 
+#[deriving(Encodable)]
 pub struct HTMLScriptElement {
     htmlelement: HTMLElement,
 }
 
+impl HTMLScriptElementDerived for EventTarget {
+    fn is_htmlscriptelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLScriptElementTypeId)) => true,
+            _ => false
+        }
+    }
+}
+
 impl HTMLScriptElement {
-    pub fn new_inherited(localName: ~str, document: AbstractDocument) -> HTMLScriptElement {
+    pub fn new_inherited(localName: DOMString, document: JS<Document>) -> HTMLScriptElement {
         HTMLScriptElement {
-            htmlelement: HTMLElement::new(HTMLScriptElementTypeId, localName, document)
+            htmlelement: HTMLElement::new_inherited(HTMLScriptElementTypeId, localName, document)
         }
     }
 
-    pub fn new(localName: ~str, document: AbstractDocument) -> AbstractNode<ScriptView> {
-        let element = HTMLScriptElement::new_inherited(localName, document);
-        Node::reflect_node(@mut element, document, HTMLScriptElementBinding::Wrap)
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLScriptElement> {
+        let element = HTMLScriptElement::new_inherited(localName, document.clone());
+        Node::reflect_node(~element, document, HTMLScriptElementBinding::Wrap)
     }
 }
 
 impl HTMLScriptElement {
     pub fn Src(&self) -> DOMString {
-        self.htmlelement.element.get_attr("src").map(|s| s.to_str())
+        self.htmlelement.element.get_url_attribute("src")
     }
 
-    pub fn SetSrc(&mut self, _src: &DOMString) -> ErrorResult {
+    pub fn SetSrc(&mut self, _src: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Type(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetType(&mut self, _type: &DOMString) -> ErrorResult {
+    pub fn SetType(&mut self, _type: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Charset(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCharset(&mut self, _charset: &DOMString) -> ErrorResult {
+    pub fn SetCharset(&mut self, _charset: DOMString) -> ErrorResult {
         Ok(())
     }
 
@@ -69,34 +82,34 @@ impl HTMLScriptElement {
     }
 
     pub fn CrossOrigin(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCrossOrigin(&mut self, _cross_origin: &DOMString) -> ErrorResult {
+    pub fn SetCrossOrigin(&mut self, _cross_origin: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Text(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetText(&mut self, _text: &DOMString) -> ErrorResult {
+    pub fn SetText(&mut self, _text: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Event(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetEvent(&mut self, _event: &DOMString) -> ErrorResult {
+    pub fn SetEvent(&mut self, _event: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn HtmlFor(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetHtmlFor(&mut self, _html_for: &DOMString) -> ErrorResult {
+    pub fn SetHtmlFor(&mut self, _html_for: DOMString) -> ErrorResult {
         Ok(())
     }
 }

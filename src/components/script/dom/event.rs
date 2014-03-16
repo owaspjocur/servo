@@ -2,16 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use dom::bindings::codegen::EventBinding;
+use dom::bindings::codegen::EventBinding::EventConstants;
+use dom::bindings::js::JS;
+use dom::bindings::utils::{Reflectable, Reflector, reflect_dom_object};
+use dom::bindings::error::{Fallible, ErrorResult};
 use dom::eventtarget::EventTarget;
 use dom::window::Window;
-use dom::bindings::codegen::EventBinding;
-use dom::bindings::utils::{Reflectable, Reflector, reflect_dom_object};
-use dom::bindings::utils::{DOMString, ErrorResult, Fallible};
+use servo_util::str::DOMString;
 
 use geom::point::Point2D;
-use js::jsapi::{JSObject, JSContext};
-
-use script_task::page_from_context;
 
 pub enum Event_ {
     ResizeEvent(uint, uint), 
@@ -19,47 +19,83 @@ pub enum Event_ {
     ClickEvent(uint, Point2D<f32>),
     MouseDownEvent(uint, Point2D<f32>),
     MouseUpEvent(uint, Point2D<f32>),
+    MouseMoveEvent(Point2D<f32>)
 }
 
+#[deriving(Encodable)]
+pub enum EventPhase {
+    Phase_None      = EventConstants::NONE,
+    Phase_Capturing = EventConstants::CAPTURING_PHASE,
+    Phase_At_Target = EventConstants::AT_TARGET,
+    Phase_Bubbling  = EventConstants::BUBBLING_PHASE,
+}
+
+#[deriving(Eq, Encodable)]
+pub enum EventTypeId {
+    HTMLEventTypeId,
+    UIEventTypeId,
+    MouseEventTypeId,
+    KeyEventTypeId
+}
+
+#[deriving(Encodable)]
 pub struct Event {
+    type_id: EventTypeId,
     reflector_: Reflector,
+    current_target: Option<JS<EventTarget>>,
+    target: Option<JS<EventTarget>>,
     type_: DOMString,
+    phase: EventPhase,
     default_prevented: bool,
+    stop_propagation: bool,
+    stop_immediate: bool,
     cancelable: bool,
     bubbles: bool,
     trusted: bool,
+    dispatching: bool,
+    initialized: bool,
 }
 
 impl Event {
-    pub fn new_inherited(type_: &DOMString) -> Event {
+    pub fn new_inherited(type_id: EventTypeId) -> Event {
         Event {
+            type_id: type_id,
             reflector_: Reflector::new(),
-            type_: (*type_).clone(),
+            current_target: None,
+            target: None,
+            phase: Phase_None,
+            type_: ~"",
             default_prevented: false,
             cancelable: true,
             bubbles: true,
-            trusted: false
+            trusted: false,
+            dispatching: false,
+            stop_propagation: false,
+            stop_immediate: false,
+            initialized: false,
         }
     }
 
-    pub fn new(window: @mut Window, type_: &DOMString) -> @mut Event {
-        reflect_dom_object(@mut Event::new_inherited(type_), window, EventBinding::Wrap)
+    pub fn new(window: &JS<Window>) -> JS<Event> {
+        reflect_dom_object(~Event::new_inherited(HTMLEventTypeId),
+                           window,
+                           EventBinding::Wrap)
     }
 
     pub fn EventPhase(&self) -> u16 {
-        0
+        self.phase as u16
     }
 
     pub fn Type(&self) -> DOMString {
         self.type_.clone()
     }
 
-    pub fn GetTarget(&self) -> Option<@mut EventTarget> {
-        None
+    pub fn GetTarget(&self) -> Option<JS<EventTarget>> {
+        self.target.clone()
     }
 
-    pub fn GetCurrentTarget(&self) -> Option<@mut EventTarget> {
-        None
+    pub fn GetCurrentTarget(&self) -> Option<JS<EventTarget>> {
+        self.current_target.clone()
     }
 
     pub fn DefaultPrevented(&self) -> bool {
@@ -67,13 +103,18 @@ impl Event {
     }
 
     pub fn PreventDefault(&mut self) {
-        self.default_prevented = true
+        if self.cancelable {
+            self.default_prevented = true
+        }
     }
 
     pub fn StopPropagation(&mut self) {
+        self.stop_propagation = true;
     }
 
     pub fn StopImmediatePropagation(&mut self) {
+        self.stop_immediate = true;
+        self.stop_propagation = true;
     }
 
     pub fn Bubbles(&self) -> bool {
@@ -89,12 +130,13 @@ impl Event {
     }
 
     pub fn InitEvent(&mut self,
-                     type_: &DOMString,
+                     type_: DOMString,
                      bubbles: bool,
                      cancelable: bool) -> ErrorResult {
-        self.type_ = (*type_).clone();
+        self.type_ = type_;
         self.cancelable = cancelable;
         self.bubbles = bubbles;
+        self.initialized = true;
         Ok(())
     }
 
@@ -102,10 +144,12 @@ impl Event {
         self.trusted
     }
 
-    pub fn Constructor(global: @mut Window,
-                   type_: &DOMString,
-                   _init: &EventBinding::EventInit) -> Fallible<@mut Event> {
-        Ok(Event::new(global, type_))
+    pub fn Constructor(global: &JS<Window>,
+                       type_: DOMString,
+                       init: &EventBinding::EventInit) -> Fallible<JS<Event>> {
+        let mut ev = Event::new(global);
+        ev.get_mut().InitEvent(type_, init.bubbles, init.cancelable);
+        Ok(ev)
     }
 }
 
@@ -116,16 +160,5 @@ impl Reflectable for Event {
 
     fn mut_reflector<'a>(&'a mut self) -> &'a mut Reflector {
         &mut self.reflector_
-    }
-
-    fn wrap_object_shared(@mut self, _cx: *JSContext, _scope: *JSObject) -> *JSObject {
-        unreachable!()
-    }
-
-    fn GetParentObject(&self, cx: *JSContext) -> Option<@mut Reflectable> {
-        let page = page_from_context(cx);
-        unsafe {
-            Some((*page).frame.get_ref().window as @mut Reflectable)
-        }
     }
 }

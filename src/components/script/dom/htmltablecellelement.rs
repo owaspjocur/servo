@@ -2,19 +2,35 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use dom::bindings::utils::{DOMString, ErrorResult};
-use dom::document::AbstractDocument;
-use dom::element::ElementTypeId;
+use dom::bindings::codegen::InheritTypes::HTMLTableCellElementDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
+use dom::element::{ElementTypeId, HTMLTableDataCellElementTypeId, HTMLTableHeaderCellElementTypeId};
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
+use dom::node::ElementNodeTypeId;
+use servo_util::str::DOMString;
 
+#[deriving(Encodable)]
 pub struct HTMLTableCellElement {
     htmlelement: HTMLElement,
 }
 
+impl HTMLTableCellElementDerived for EventTarget {
+    fn is_htmltablecellelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLTableDataCellElementTypeId)) |
+            NodeTargetTypeId(ElementNodeTypeId(HTMLTableHeaderCellElementTypeId)) => true,
+            _ => false
+        }
+    }
+}
+
 impl HTMLTableCellElement {
-    pub fn new_inherited(type_id: ElementTypeId, tag_name: ~str, document: AbstractDocument) -> HTMLTableCellElement {
+    pub fn new_inherited(type_id: ElementTypeId, tag_name: DOMString, document: JS<Document>) -> HTMLTableCellElement {
         HTMLTableCellElement {
-            htmlelement: HTMLElement::new(type_id, tag_name, document)
+            htmlelement: HTMLElement::new_inherited(type_id, tag_name, document)
         }
     }
 }
@@ -37,10 +53,10 @@ impl HTMLTableCellElement {
     }
 
     pub fn Headers(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetHeaders(&self, _headers: &DOMString) -> ErrorResult {
+    pub fn SetHeaders(&self, _headers: DOMString) -> ErrorResult {
         Ok(())
     }
 
@@ -53,66 +69,66 @@ impl HTMLTableCellElement {
     }
 
     pub fn Abbr(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAbbr(&self, _abbr: &DOMString) -> ErrorResult {
+    pub fn SetAbbr(&self, _abbr: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Scope(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetScope(&self, _abbr: &DOMString) -> ErrorResult {
+    pub fn SetScope(&self, _abbr: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Align(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAlign(&self, _align: &DOMString) -> ErrorResult {
+    pub fn SetAlign(&self, _align: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Axis(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAxis(&self, _axis: &DOMString) -> ErrorResult {
+    pub fn SetAxis(&self, _axis: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Height(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetHeight(&self, _height: &DOMString) -> ErrorResult {
+    pub fn SetHeight(&self, _height: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Width(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetWidth(&self, _width: &DOMString) -> ErrorResult {
+    pub fn SetWidth(&self, _width: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Ch(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCh(&self, _ch: &DOMString) -> ErrorResult {
+    pub fn SetCh(&self, _ch: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn ChOff(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetChOff(&self, _ch_off: &DOMString) -> ErrorResult {
+    pub fn SetChOff(&self, _ch_off: DOMString) -> ErrorResult {
         Ok(())
     }
 
@@ -125,18 +141,18 @@ impl HTMLTableCellElement {
     }
 
     pub fn VAlign(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetVAlign(&self, _valign: &DOMString) -> ErrorResult {
+    pub fn SetVAlign(&self, _valign: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn BgColor(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetBgColor(&self, _bg_color: &DOMString) -> ErrorResult {
+    pub fn SetBgColor(&self, _bg_color: DOMString) -> ErrorResult {
         Ok(())
     }
 }

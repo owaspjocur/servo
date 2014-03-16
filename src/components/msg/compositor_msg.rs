@@ -2,12 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use geom::point::Point2D;
 use geom::rect::Rect;
 use geom::size::Size2D;
+use azure::azure_hl::Color;
 use layers::platform::surface::{NativeGraphicsMetadata, NativePaintingGraphicsContext};
 use layers::platform::surface::{NativeSurface, NativeSurfaceMethods};
 
 use constellation_msg::PipelineId;
+
+use extra::serialize::{Encoder, Encodable};
 
 pub struct LayerBuffer {
     /// The native surface which can be shared between threads or processes. On Mac this is an
@@ -43,13 +47,13 @@ impl LayerBufferSet {
 }
 
 /// The status of the renderer.
-#[deriving(Eq)]
+#[deriving(Eq, Clone)]
 pub enum RenderState {
     IdleRenderState,
     RenderingRenderState,
 }
 
-#[deriving(Eq)]
+#[deriving(Eq, Clone)]
 pub enum ReadyState {
     /// Informs the compositor that nothing has been done yet. Used for setting status
     Blank,
@@ -74,9 +78,9 @@ impl Epoch {
 /// The interface used by the renderer to acquire draw targets for each render frame and
 /// submit them to be drawn to the display.
 pub trait RenderListener {
-    fn get_graphics_metadata(&self) -> NativeGraphicsMetadata;
+    fn get_graphics_metadata(&self) -> Option<NativeGraphicsMetadata>;
     fn new_layer(&self, PipelineId, Size2D<uint>);
-    fn set_layer_page_size(&self, PipelineId, Size2D<uint>, Epoch);
+    fn set_layer_page_size_and_color(&self, PipelineId, Size2D<uint>, Epoch, Color);
     fn set_layer_clip_rect(&self, PipelineId, Rect<uint>);
     fn delete_layer(&self, PipelineId);
     fn paint(&self, id: PipelineId, layer_buffer_set: ~LayerBufferSet, Epoch);
@@ -88,7 +92,14 @@ pub trait RenderListener {
 pub trait ScriptListener : Clone {
     fn set_ready_state(&self, ReadyState);
     fn invalidate_rect(&self, PipelineId, Rect<uint>);
+    fn scroll_fragment_point(&self, PipelineId, Point2D<f32>);
     fn close(&self);
+    fn dup(&self) -> ~ScriptListener;
+}
+
+impl<S: Encoder> Encodable<S> for @ScriptListener {
+    fn encode(&self, _s: &mut S) {
+    }
 }
 
 /// The interface used by the quadtree and buffer map to get info about layer buffers.

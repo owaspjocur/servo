@@ -4,7 +4,7 @@
 
 // The task that handles all rendering/painting.
 
-use azure::azure_hl::{B8G8R8A8, DrawTarget, StolenGLResources};
+use azure::azure_hl::{B8G8R8A8, Color, DrawTarget, StolenGLResources};
 use azure::AzFloat;
 use geom::matrix2d::Matrix2D;
 use geom::rect::Rect;
@@ -15,23 +15,26 @@ use layers;
 use servo_msg::compositor_msg::{Epoch, IdleRenderState, LayerBuffer, LayerBufferSet};
 use servo_msg::compositor_msg::{RenderListener, RenderingRenderState};
 use servo_msg::constellation_msg::{ConstellationChan, PipelineId, RendererReadyMsg};
+use servo_msg::constellation_msg::{Failure, FailureMsg};
 use servo_msg::platform::surface::NativeSurfaceAzureMethods;
+use servo_util::opts::Opts;
 use servo_util::time::{ProfilerChan, profile};
 use servo_util::time;
+use servo_util::task::send_on_failure;
 
 use std::comm::{Chan, Port, SharedChan};
-use std::task::spawn_with;
+use std::task;
 use extra::arc::Arc;
 
 use buffer_map::BufferMap;
-use display_list::DisplayList;
-use font_context::FontContext;
-use opts::Opts;
+use display_list::DisplayListCollection;
+use font_context::{FontContext, FontContextInfo};
 use render_context::RenderContext;
 
 pub struct RenderLayer<T> {
-    display_list: Arc<DisplayList<T>>,
-    size: Size2D<uint>
+    display_list_collection: Arc<DisplayListCollection<T>>,
+    size: Size2D<uint>,
+    color: Color
 }
 
 pub enum Msg<T> {
@@ -40,7 +43,7 @@ pub enum Msg<T> {
     UnusedBufferMsg(~[~LayerBuffer]),
     PaintPermissionGranted,
     PaintPermissionRevoked,
-    ExitMsg(Chan<()>),
+    ExitMsg(Option<Chan<()>>),
 }
 
 /// A request from the compositor to the renderer for tiles that need to be (re)displayed.
@@ -62,24 +65,32 @@ pub fn BufferRequest(screen_rect: Rect<uint>, page_rect: Rect<f32>) -> BufferReq
 
 // FIXME(rust#9155): this should be a newtype struct, but
 // generic newtypes ICE when compiled cross-crate
-#[deriving(Clone)]
 pub struct RenderChan<T> {
     chan: SharedChan<Msg<T>>,
 }
-impl<T: Send> RenderChan<T> {
-    pub fn new(chan: Chan<Msg<T>>) -> RenderChan<T> {
+
+impl<T: Send> Clone for RenderChan<T> {
+    fn clone(&self) -> RenderChan<T> {
         RenderChan {
-            chan: SharedChan::new(chan),
+            chan: self.chan.clone(),
         }
     }
 }
-impl<T: Send> GenericChan<Msg<T>> for RenderChan<T> {
-    fn send(&self, msg: Msg<T>) {
+
+impl<T: Send> RenderChan<T> {
+    pub fn new() -> (Port<Msg<T>>, RenderChan<T>) {
+        let (port, chan) = SharedChan::new();
+        let render_chan = RenderChan {
+            chan: chan,
+        };
+        (port, render_chan)
+    }
+
+    pub fn send(&self, msg: Msg<T>) {
         assert!(self.try_send(msg), "RenderChan.send: render port closed")
     }
-}
-impl<T: Send> GenericSmartChan<Msg<T>> for RenderChan<T> {
-    fn try_send(&self, msg: Msg<T>) -> bool {
+
+    pub fn try_send(&self, msg: Msg<T>) -> bool {
         self.chan.try_send(msg)
     }
 }
@@ -96,7 +107,7 @@ pub struct RenderTask<C,T> {
     port: Port<Msg<T>>,
     compositor: C,
     constellation_chan: ConstellationChan,
-    font_ctx: @mut FontContext,
+    font_ctx: ~FontContext,
     opts: Opts,
 
     /// A channel to the profiler.
@@ -106,7 +117,7 @@ pub struct RenderTask<C,T> {
     graphics_context: GraphicsContext,
 
     /// The native graphics context.
-    native_graphics_context: NativePaintingGraphicsContext,
+    native_graphics_context: Option<NativePaintingGraphicsContext>,
 
     /// The layer to be rendered
     render_layer: Option<RenderLayer<T>>,
@@ -121,53 +132,72 @@ pub struct RenderTask<C,T> {
     buffer_map: BufferMap<~LayerBuffer>,
 }
 
+// If we implement this as a function, we get borrowck errors from borrowing
+// the whole RenderTask struct.
+macro_rules! native_graphics_context(
+    ($task:expr) => (
+        $task.native_graphics_context.as_ref().expect("Need a graphics context to do rendering")
+    )
+)
+
 impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
     pub fn create(id: PipelineId,
                   port: Port<Msg<T>>,
                   compositor: C,
                   constellation_chan: ConstellationChan,
+                  failure_msg: Failure,
                   opts: Opts,
-                  profiler_chan: ProfilerChan) {
-        do spawn_with((port, compositor, constellation_chan, opts, profiler_chan))
-            |(port, compositor, constellation_chan, opts, profiler_chan)| {
+                  profiler_chan: ProfilerChan,
+                  shutdown_chan: Chan<()>) {
+        let mut builder = task::task();
+        send_on_failure(&mut builder, FailureMsg(failure_msg), (*constellation_chan).clone());
+        builder.name("RenderTask");
+        builder.spawn(proc() {
 
-            let graphics_metadata = compositor.get_graphics_metadata();
-            let cpu_painting = opts.cpu_painting;
-            let native_graphics_context =
-                    NativePaintingGraphicsContext::from_metadata(&graphics_metadata);
+            { // Ensures RenderTask and graphics context are destroyed before shutdown msg
+                let native_graphics_context = compositor.get_graphics_metadata().map(
+                    |md| NativePaintingGraphicsContext::from_metadata(&md));
+                let cpu_painting = opts.cpu_painting;
 
-            // FIXME: rust/#5967
-            let mut render_task = RenderTask {
-                id: id,
-                port: port,
-                compositor: compositor,
-                constellation_chan: constellation_chan,
-                font_ctx: @mut FontContext::new(opts.render_backend.clone(),
-                                                false,
-                                                profiler_chan.clone()),
-                opts: opts,
-                profiler_chan: profiler_chan,
+                // FIXME: rust/#5967
+                let mut render_task = RenderTask {
+                    id: id,
+                    port: port,
+                    compositor: compositor,
+                    constellation_chan: constellation_chan,
+                    font_ctx: ~FontContext::new(FontContextInfo {
+                        backend: opts.render_backend.clone(),
+                        needs_font_list: false,
+                        profiler_chan: profiler_chan.clone(),
+                    }),
+                    opts: opts,
+                    profiler_chan: profiler_chan,
 
-                graphics_context: if cpu_painting {
-                    CpuGraphicsContext
-                } else {
-                    GpuGraphicsContext
-                },
+                    graphics_context: if cpu_painting {
+                        CpuGraphicsContext
+                    } else {
+                        GpuGraphicsContext
+                    },
 
-                native_graphics_context: native_graphics_context,
+                    native_graphics_context: native_graphics_context,
 
-                render_layer: None,
+                    render_layer: None,
 
-                paint_permission: false,
-                epoch: Epoch(0),
-                buffer_map: BufferMap::new(10000000),
-            };
+                    paint_permission: false,
+                    epoch: Epoch(0),
+                    buffer_map: BufferMap::new(10000000),
+                };
 
-            render_task.start();
+                render_task.start();
 
-            // Destroy all the buffers.
-            render_task.buffer_map.clear(&render_task.native_graphics_context)
-        }
+                // Destroy all the buffers.
+                render_task.native_graphics_context.as_ref().map(
+                    |ctx| render_task.buffer_map.clear(ctx));
+            }
+
+            debug!("render_task: shutdown_chan send");
+            shutdown_chan.send(());
+        });
     }
 
     fn start(&mut self) {
@@ -178,8 +208,9 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
                 RenderMsg(render_layer) => {
                     if self.paint_permission {
                         self.epoch.next();
-                        self.compositor.set_layer_page_size(self.id, render_layer.size, self.epoch);
+                        self.compositor.set_layer_page_size_and_color(self.id, render_layer.size, self.epoch, render_layer.color);
                     } else {
+                        debug!("render_task: render ready msg");
                         self.constellation_chan.send(RendererReadyMsg(self.id));
                     }
                     self.render_layer = Some(render_layer);
@@ -194,7 +225,7 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
                 UnusedBufferMsg(unused_buffers) => {
                     // move_rev_iter is more efficient
                     for buffer in unused_buffers.move_rev_iter() {
-                        self.buffer_map.insert(&self.native_graphics_context, buffer);
+                        self.buffer_map.insert(native_graphics_context!(self), buffer);
                     }
                 }
                 PaintPermissionGranted => {
@@ -202,7 +233,7 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
                     match self.render_layer {
                         Some(ref render_layer) => {
                             self.epoch.next();
-                            self.compositor.set_layer_page_size(self.id, render_layer.size, self.epoch);
+                            self.compositor.set_layer_page_size_and_color(self.id, render_layer.size, self.epoch, render_layer.color);
                         }
                         None => {}
                     }
@@ -211,7 +242,8 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
                     self.paint_permission = false;
                 }
                 ExitMsg(response_ch) => {
-                    response_ch.send(());
+                    debug!("render_task: exitmsg response send");
+                    response_ch.map(|ch| ch.send(()));
                     break;
                 }
             }
@@ -219,13 +251,6 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
     }
 
     fn render(&mut self, tiles: ~[BufferRequest], scale: f32) {
-        // In headless mode, disable the renderer, because it makes OpenGL
-        // calls.  Once we have CPU rendering we should render in CPU mode and
-        // just disable texture upload.
-        if self.opts.headless {
-            return;
-        }
-
         let render_layer;
         match self.render_layer {
             Some(ref r_layer) => {
@@ -235,12 +260,12 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
         }
 
         self.compositor.set_render_state(RenderingRenderState);
-        do time::profile(time::RenderingCategory, self.profiler_chan.clone()) {
+        time::profile(time::RenderingCategory, self.profiler_chan.clone(), || {
             // FIXME: Try not to create a new array here.
             let mut new_buffers = ~[];
 
             // Divide up the layer into tiles.
-            do time::profile(time::RenderingPrepBuffCategory, self.profiler_chan.clone()) {
+            time::profile(time::RenderingPrepBuffCategory, self.profiler_chan.clone(), || {
                 for tile in tiles.iter() {
                     let width = tile.screen_rect.size.width;
                     let height = tile.screen_rect.size.height;
@@ -255,7 +280,7 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
                             // (texture color buffer, renderbuffers) instead of recreating them.
                             let draw_target =
                                 DrawTarget::new_with_fbo(self.opts.render_backend,
-                                                         &self.native_graphics_context,
+                                                         native_graphics_context!(self),
                                                          size,
                                                          B8G8R8A8);
                             draw_target.make_current();
@@ -265,9 +290,9 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
 
                     {
                         // Build the render context.
-                        let ctx = RenderContext {
+                        let mut ctx = RenderContext {
                             draw_target: &draw_target,
-                            font_ctx: self.font_ctx,
+                            font_ctx: &mut self.font_ctx,
                             opts: &self.opts,
                             page_rect: tile.page_rect,
                             screen_rect: tile.screen_rect,
@@ -285,10 +310,10 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
                         ctx.clear();
                         
                         // Draw the display list.
-                        do profile(time::RenderingDrawingCategory, self.profiler_chan.clone()) {
-                            render_layer.display_list.get().draw_into_context(&ctx);
+                        profile(time::RenderingDrawingCategory, self.profiler_chan.clone(), || {
+                            render_layer.display_list_collection.get().draw_lists_into_context(&mut ctx);
                             ctx.draw_target.flush();
-                        }
+                        });
                     }
 
                     // Extract the texture from the draw target and place it into its slot in the
@@ -312,7 +337,7 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
                                     // in case it dies in transit to the compositor task.
                                     let mut native_surface: NativeSurface =
                                         layers::platform::surface::NativeSurfaceMethods::new(
-                                            &self.native_graphics_context,
+                                            native_graphics_context!(self),
                                             Size2D(width as i32, height as i32),
                                             width as i32 * 4);
                                     native_surface.mark_wont_leak();
@@ -327,11 +352,11 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
                                 }
                             };
 
-                            do draw_target.snapshot().get_data_surface().with_data |data| {
-                                buffer.native_surface.upload(&self.native_graphics_context, data);
+                            draw_target.snapshot().get_data_surface().with_data(|data| {
+                                buffer.native_surface.upload(native_graphics_context!(self), data);
                                 debug!("RENDERER uploading to native surface {:d}",
                                        buffer.native_surface.get_id() as int);
-                            }
+                            });
 
                             buffer
                         }
@@ -359,7 +384,7 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
                     
                     new_buffers.push(buffer);
                 }
-            }
+            });
 
             let layer_buffer_set = ~LayerBufferSet {
                 buffers: new_buffers,
@@ -369,10 +394,11 @@ impl<C: RenderListener + Send,T:Send+Freeze> RenderTask<C,T> {
             if self.paint_permission {
                 self.compositor.paint(self.id, layer_buffer_set, self.epoch);
             } else {
+                debug!("render_task: RendererReadyMsg send");
                 self.constellation_chan.send(RendererReadyMsg(self.id));
             }
             self.compositor.set_render_state(IdleRenderState);
-        }
+        })
     }
 }
 

@@ -3,17 +3,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use dom::bindings::codegen::MouseEventBinding;
-use dom::bindings::utils::{ErrorResult, Fallible, DOMString};
+use dom::bindings::codegen::InheritTypes::MouseEventDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::{ErrorResult, Fallible};
 use dom::bindings::utils::{Reflectable, Reflector, reflect_dom_object};
+use dom::event::{Event, MouseEventTypeId};
 use dom::eventtarget::EventTarget;
 use dom::uievent::UIEvent;
 use dom::window::Window;
 use dom::windowproxy::WindowProxy;
+use servo_util::str::DOMString;
 
-use js::jsapi::{JSObject, JSContext};
-
+#[deriving(Encodable)]
 pub struct MouseEvent {
-    parent: UIEvent,
+    mouseevent: UIEvent,
     screen_x: i32,
     screen_y: i32,
     client_x: i32,
@@ -23,38 +26,48 @@ pub struct MouseEvent {
     alt_key: bool,
     meta_key: bool,
     button: u16,
-    related_target: Option<@mut EventTarget>
+    related_target: Option<JS<EventTarget>>
+}
+
+impl MouseEventDerived for Event {
+    fn is_mouseevent(&self) -> bool {
+        self.type_id == MouseEventTypeId
+    }
 }
 
 impl MouseEvent {
-    pub fn new(window: @mut Window, type_: &DOMString, can_bubble: bool, cancelable: bool,
-               view: Option<@mut WindowProxy>, detail: i32, screen_x: i32,
-               screen_y: i32, client_x: i32, client_y: i32, ctrl_key: bool,
-               shift_key: bool, alt_key: bool, meta_key: bool, button: u16,
-               _buttons: u16, related_target: Option<@mut EventTarget>) -> @mut MouseEvent {
-        let ev = @mut MouseEvent {
-            parent: UIEvent::new_inherited(type_, can_bubble, cancelable, view, detail),
-            screen_x: screen_x,
-            screen_y: screen_y,
-            client_x: client_x,
-            client_y: client_y,
-            ctrl_key: ctrl_key,
-            shift_key: shift_key,
-            alt_key: alt_key,
-            meta_key: meta_key,
-            button: button,
-            related_target: related_target
-        };
-        reflect_dom_object(ev, window, MouseEventBinding::Wrap)
+    pub fn new_inherited() -> MouseEvent {
+        MouseEvent {
+            mouseevent: UIEvent::new_inherited(MouseEventTypeId),
+            screen_x: 0,
+            screen_y: 0,
+            client_x: 0,
+            client_y: 0,
+            ctrl_key: false,
+            shift_key: false,
+            alt_key: false,
+            meta_key: false,
+            button: 0,
+            related_target: None
+        }
     }
 
-    pub fn Constructor(owner: @mut Window,
-                       type_: &DOMString,
-                       init: &MouseEventBinding::MouseEventInit) -> Fallible<@mut MouseEvent> {
-        Ok(MouseEvent::new(owner, type_, init.bubbles, init.cancelable, init.view, init.detail,
-                           init.screenX, init.screenY, init.clientX, init.clientY,
-                           init.ctrlKey, init.shiftKey, init.altKey, init.metaKey,
-                           init.button, init.buttons, init.relatedTarget))
+    pub fn new(window: &JS<Window>) -> JS<MouseEvent> {
+        reflect_dom_object(~MouseEvent::new_inherited(),
+                           window,
+                           MouseEventBinding::Wrap)
+    }
+
+    pub fn Constructor(owner: &JS<Window>,
+                       type_: DOMString,
+                       init: &MouseEventBinding::MouseEventInit) -> Fallible<JS<MouseEvent>> {
+        let mut ev = MouseEvent::new(owner);
+        ev.get_mut().InitMouseEvent(type_, init.bubbles, init.cancelable, init.view.clone(),
+                                      init.detail, init.screenX, init.screenY,
+                                      init.clientX, init.clientY, init.ctrlKey,
+                                      init.altKey, init.shiftKey, init.metaKey,
+                                      init.button, init.relatedTarget.clone());
+        Ok(ev)
     }
 
     pub fn ScreenX(&self) -> i32 {
@@ -98,20 +111,20 @@ impl MouseEvent {
         0
     }
 
-    pub fn GetRelatedTarget(&self) -> Option<@mut EventTarget> {
-        self.related_target
+    pub fn GetRelatedTarget(&self) -> Option<JS<EventTarget>> {
+        self.related_target.clone()
     }
 
-    pub fn GetModifierState(&self, _keyArg: &DOMString) -> bool {
+    pub fn GetModifierState(&self, _keyArg: DOMString) -> bool {
         //TODO
         false
     }
 
     pub fn InitMouseEvent(&mut self,
-                          typeArg: &DOMString,
+                          typeArg: DOMString,
                           canBubbleArg: bool,
                           cancelableArg: bool,
-                          viewArg: Option<@mut WindowProxy>,
+                          viewArg: Option<JS<WindowProxy>>,
                           detailArg: i32,
                           screenXArg: i32,
                           screenYArg: i32,
@@ -122,8 +135,8 @@ impl MouseEvent {
                           shiftKeyArg: bool,
                           metaKeyArg: bool,
                           buttonArg: u16,
-                          relatedTargetArg: Option<@mut EventTarget>) -> ErrorResult {
-        self.parent.InitUIEvent(typeArg, canBubbleArg, cancelableArg, viewArg, detailArg);
+                          relatedTargetArg: Option<JS<EventTarget>>) -> ErrorResult {
+        self.mouseevent.InitUIEvent(typeArg, canBubbleArg, cancelableArg, viewArg, detailArg);
         self.screen_x = screenXArg;
         self.screen_y = screenYArg;
         self.client_x = clientXArg;
@@ -140,18 +153,10 @@ impl MouseEvent {
 
 impl Reflectable for MouseEvent {
     fn reflector<'a>(&'a self) -> &'a Reflector {
-        self.parent.reflector()
+        self.mouseevent.reflector()
     }
 
     fn mut_reflector<'a>(&'a mut self) -> &'a mut Reflector {
-        self.parent.mut_reflector()
-    }
-
-    fn wrap_object_shared(@mut self, _cx: *JSContext, _scope: *JSObject) -> *JSObject {
-        unreachable!()
-    }
-
-    fn GetParentObject(&self, cx: *JSContext) -> Option<@mut Reflectable> {
-        self.parent.GetParentObject(cx)
+        self.mouseevent.mut_reflector()
     }
 }

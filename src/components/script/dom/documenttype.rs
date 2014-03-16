@@ -2,38 +2,62 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use dom::bindings::utils::DOMString;
-use dom::document::AbstractDocument;
-use dom::node::{ScriptView, Node, DoctypeNodeTypeId};
+use dom::bindings::codegen::InheritTypes::DocumentTypeDerived;
+use dom::bindings::codegen::DocumentTypeBinding;
+use dom::bindings::js::JS;
+use dom::document::Document;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
+use dom::node::{Node, DoctypeNodeTypeId};
+use servo_util::str::DOMString;
 
 /// The `DOCTYPE` tag.
+#[deriving(Encodable)]
 pub struct DocumentType {
-    node: Node<ScriptView>,
-    name: ~str,
-    public_id: Option<~str>,
-    system_id: Option<~str>,
-    force_quirks: bool
+    node: Node,
+    name: DOMString,
+    public_id: DOMString,
+    system_id: DOMString,
+}
+
+impl DocumentTypeDerived for EventTarget {
+    fn is_documenttype(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(DoctypeNodeTypeId) => true,
+            _ => false
+        }
+    }
 }
 
 impl DocumentType {
-    /// Creates a new `DOCTYPE` tag.
-    pub fn new(name: ~str,
-               public_id: Option<~str>,
-               system_id: Option<~str>,
-               force_quirks: bool,
-               document: AbstractDocument)
+    pub fn new_inherited(name: DOMString,
+                         public_id: Option<DOMString>,
+                         system_id: Option<DOMString>,
+                         document: JS<Document>)
             -> DocumentType {
         DocumentType {
-            node: Node::new(DoctypeNodeTypeId, document),
+            node: Node::new_inherited(DoctypeNodeTypeId, document),
             name: name,
-            public_id: public_id,
-            system_id: system_id,
-            force_quirks: force_quirks,
+            public_id: public_id.unwrap_or(~""),
+            system_id: system_id.unwrap_or(~"")
         }
     }
 
+    pub fn new(name: DOMString,
+               public_id: Option<DOMString>,
+               system_id: Option<DOMString>,
+               document: &JS<Document>)
+               -> JS<DocumentType> {
+        let documenttype = DocumentType::new_inherited(name,
+                                                       public_id,
+                                                       system_id,
+                                                       document.clone());
+        Node::reflect_node(~documenttype, document, DocumentTypeBinding::Wrap)
+    }
+}
+
+impl DocumentType {
     pub fn Name(&self) -> DOMString {
-        Some(self.name.clone())
+        self.name.clone()
     }
 
     pub fn PublicId(&self) -> DOMString {

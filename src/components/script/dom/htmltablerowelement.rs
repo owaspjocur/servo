@@ -3,26 +3,40 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use dom::bindings::codegen::HTMLTableRowElementBinding;
-use dom::bindings::utils::{DOMString, ErrorResult};
-use dom::document::AbstractDocument;
+use dom::bindings::codegen::InheritTypes::HTMLTableRowElementDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
 use dom::element::HTMLTableRowElementTypeId;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
-use dom::node::{AbstractNode, Node, ScriptView};
+use dom::node::{Node, ElementNodeTypeId};
+use servo_util::str::DOMString;
 
+#[deriving(Encodable)]
 pub struct HTMLTableRowElement {
     htmlelement: HTMLElement,
 }
 
+impl HTMLTableRowElementDerived for EventTarget {
+    fn is_htmltablerowelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLTableRowElementTypeId)) => true,
+            _ => false
+        }
+    }
+}
+
 impl HTMLTableRowElement {
-    pub fn new_inherited(localName: ~str, document: AbstractDocument) -> HTMLTableRowElement {
+    pub fn new_inherited(localName: DOMString, document: JS<Document>) -> HTMLTableRowElement {
         HTMLTableRowElement {
-            htmlelement: HTMLElement::new(HTMLTableRowElementTypeId, localName, document)
+            htmlelement: HTMLElement::new_inherited(HTMLTableRowElementTypeId, localName, document)
         }
     }
 
-    pub fn new(localName: ~str, document: AbstractDocument) -> AbstractNode<ScriptView> {
-        let element = HTMLTableRowElement::new_inherited(localName, document);
-        Node::reflect_node(@mut element, document, HTMLTableRowElementBinding::Wrap)
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLTableRowElement> {
+        let element = HTMLTableRowElement::new_inherited(localName, document.clone());
+        Node::reflect_node(~element, document, HTMLTableRowElementBinding::Wrap)
     }
 }
 
@@ -48,42 +62,42 @@ impl HTMLTableRowElement {
     }
 
     pub fn Align(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAlign(&self, _align: &DOMString) -> ErrorResult {
+    pub fn SetAlign(&self, _align: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Ch(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCh(&self, _ch: &DOMString) -> ErrorResult {
+    pub fn SetCh(&self, _ch: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn ChOff(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetChOff(&self, _ch_off: &DOMString) -> ErrorResult {
+    pub fn SetChOff(&self, _ch_off: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn VAlign(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetVAlign(&self, _v_align: &DOMString) -> ErrorResult {
+    pub fn SetVAlign(&self, _v_align: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn BgColor(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetBgColor(&self, _bg_color: &DOMString) -> ErrorResult {
+    pub fn SetBgColor(&self, _bg_color: DOMString) -> ErrorResult {
         Ok(())
     }
 }

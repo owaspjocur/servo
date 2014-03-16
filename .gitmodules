@@ -61,12 +61,15 @@
 [submodule "src/platform/linux/rust-xlib"]
 	path = src/platform/linux/rust-xlib
 	url = https://github.com/mozilla-servo/rust-xlib.git
+[submodule "src/platform/linux/fontconfig"]
+	path = src/platform/linux/fontconfig
+	url = https://github.com/mozilla-servo/fontconfig.git
 [submodule "src/support/skia/skia"]
 	path = src/support/skia/skia
 	url = https://github.com/mozilla-servo/skia.git
 [submodule "src/compiler/rust"]
 	path = src/compiler/rust
-	url = https://github.com/mozilla/rust.git
+	url = https://github.com/mozilla-servo/rust.git
 [submodule "src/support/alert/rust-alert"]
 	path = src/support/alert/rust-alert
 	url = https://github.com/mozilla-servo/rust-alert.git
@@ -93,16 +96,26 @@
 	url = https://github.com/mozilla-servo/libpng.git
 [submodule "src/platform/android/fontconfig"]
 	path = src/platform/android/fontconfig
-	url = http://github.com/webconvforge/fontconfig.git
+	url = https://github.com/mozilla-servo/fontconfig.git
 [submodule "src/platform/android/libexpat"]
 	path = src/platform/android/libexpat
-	url = http://github.com/webconvforge/libexpat.git
+	url = https://github.com/mozilla-servo/libexpat.git
 [submodule "src/platform/android/libfreetype2"]
 	path = src/platform/android/libfreetype2
-	url = http://github.com/webconvforge/libfreetype2.git
+	url = https://github.com/mozilla-servo/libfreetype2.git
 [submodule "src/support/glut/rust-glut"]
 	path = src/support/glut/rust-glut
-	url = http://github.com/mozilla-servo/rust-glut.git
+	url = https://github.com/mozilla-servo/rust-glut.git
 [submodule "src/support/http/rust-http"]
 	path = src/support/http/rust-http
 	url = https://github.com/mozilla-servo/rust-http
+[submodule "src/support/encoding/rust-encoding"]
+	path = src/support/encoding/rust-encoding
+	url = https://github.com/mozilla-servo/rust-encoding.git
+	branch = rust-servo
+[submodule "src/support/egl/rust-egl"]
+	path = src/support/egl/rust-egl
+	url = https://github.com/mozilla-servo/rust-egl.git
+[submodule "src/platform/android/servo-android-glue"]
+	path = src/platform/android/servo-android-glue
+	url = https://github.com/mozilla-servo/servo-android-glue.git

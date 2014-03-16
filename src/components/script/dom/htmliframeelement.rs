@@ -3,21 +3,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use dom::bindings::codegen::HTMLIFrameElementBinding;
-use dom::bindings::utils::{DOMString, ErrorResult, null_str_as_empty};
-use dom::document::AbstractDocument;
-use dom::element::HTMLIframeElementTypeId;
+use dom::bindings::codegen::InheritTypes::{ElementCast, HTMLIFrameElementDerived};
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
+use dom::element::HTMLIFrameElementTypeId;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
-use dom::node::{AbstractNode, Node, ScriptView};
+use dom::node::{Node, ElementNodeTypeId};
 use dom::windowproxy::WindowProxy;
-use geom::size::Size2D;
-use geom::rect::Rect;
+use servo_util::str::DOMString;
 
-use servo_msg::constellation_msg::{ConstellationChan, FrameRectMsg, PipelineId, SubpageId};
-
-use std::ascii::StrAsciiExt;
-use std::comm::ChanOne;
 use extra::url::Url;
-use std::util::replace;
+use servo_msg::constellation_msg::{PipelineId, SubpageId};
+use std::ascii::StrAsciiExt;
+use extra::serialize::{Encoder, Encodable};
 
 enum SandboxAllowance {
     AllowNothing = 0x00,
@@ -29,93 +29,108 @@ enum SandboxAllowance {
     AllowPopups = 0x20
 }
 
+#[deriving(Encodable)]
 pub struct HTMLIFrameElement {
     htmlelement: HTMLElement,
-    frame: Option<Url>,
+    priv extra: Untraceable,
     size: Option<IFrameSize>,
     sandbox: Option<u8>
 }
 
-struct IFrameSize {
-    pipeline_id: PipelineId,
-    subpage_id: SubpageId,
-    future_chan: Option<ChanOne<Size2D<uint>>>,
-    constellation_chan: ConstellationChan,
+struct Untraceable {
+    frame: Option<Url>,
 }
 
-impl IFrameSize {
-    pub fn set_rect(&mut self, rect: Rect<f32>) {
-        let future_chan = replace(&mut self.future_chan, None);
-        do future_chan.map |future_chan| {
-            let Size2D { width, height } = rect.size;
-            future_chan.send(Size2D(width as uint, height as uint));
-        };
-        self.constellation_chan.send(FrameRectMsg(self.pipeline_id, self.subpage_id, rect));
+impl<S: Encoder> Encodable<S> for Untraceable {
+    fn encode(&self, _s: &mut S) {
     }
+}
+
+impl HTMLIFrameElementDerived for EventTarget {
+    fn is_htmliframeelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLIFrameElementTypeId)) => true,
+            _ => false
+        }
+    }
+}
+
+#[deriving(Encodable)]
+pub struct IFrameSize {
+    pipeline_id: PipelineId,
+    subpage_id: SubpageId,
 }
 
 impl HTMLIFrameElement {
     pub fn is_sandboxed(&self) -> bool {
         self.sandbox.is_some()
     }
+
+    pub fn set_frame(&mut self, frame: Url) {
+        self.extra.frame = Some(frame);
+    }
 }
 
 impl HTMLIFrameElement {
-    pub fn new_inherited(localName: ~str, document: AbstractDocument) -> HTMLIFrameElement {
+    pub fn new_inherited(localName: DOMString, document: JS<Document>) -> HTMLIFrameElement {
         HTMLIFrameElement {
-            htmlelement: HTMLElement::new(HTMLIframeElementTypeId, localName, document),
-            frame: None,
+            htmlelement: HTMLElement::new_inherited(HTMLIFrameElementTypeId, localName, document),
+            extra: Untraceable {
+                frame: None
+            },
             size: None,
             sandbox: None,
         }
     }
 
-    pub fn new(localName: ~str, document: AbstractDocument) -> AbstractNode<ScriptView> {
-        let element = HTMLIFrameElement::new_inherited(localName, document);
-        Node::reflect_node(@mut element, document, HTMLIFrameElementBinding::Wrap)
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLIFrameElement> {
+        let element = HTMLIFrameElement::new_inherited(localName, document.clone());
+        Node::reflect_node(~element, document, HTMLIFrameElementBinding::Wrap)
     }
 }
 
 impl HTMLIFrameElement {
     pub fn Src(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetSrc(&mut self, _src: &DOMString) -> ErrorResult {
+    pub fn SetSrc(&mut self, _src: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Srcdoc(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetSrcdoc(&mut self, _srcdoc: &DOMString) -> ErrorResult {
+    pub fn SetSrcdoc(&mut self, _srcdoc: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Name(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetName(&mut self, _name: &DOMString) -> ErrorResult {
+    pub fn SetName(&mut self, _name: DOMString) -> ErrorResult {
         Ok(())
     }
 
-    pub fn Sandbox(&self, _abstract_self: AbstractNode<ScriptView>) -> DOMString {
-        self.htmlelement.element.GetAttribute(&Some(~"sandbox"))
+    pub fn Sandbox(&self, _abstract_self: &JS<HTMLIFrameElement>) -> DOMString {
+        self.htmlelement.element.get_string_attribute("sandbox")
     }
 
-    pub fn SetSandbox(&mut self, abstract_self: AbstractNode<ScriptView>, sandbox: &DOMString) {
-        self.htmlelement.element.SetAttribute(abstract_self, &Some(~"sandbox"), sandbox);
+    pub fn SetSandbox(&mut self, abstract_self: &JS<HTMLIFrameElement>, sandbox: DOMString) {
+        self.htmlelement.element.set_string_attribute(&ElementCast::from(abstract_self),
+                                                      "sandbox",
+                                                      sandbox);
     }
 
-    pub fn AfterSetAttr(&mut self, name: &DOMString, value: &DOMString) {
-        let name = null_str_as_empty(name);
+    pub fn AfterSetAttr(&mut self, name: DOMString, value: DOMString) {
         if "sandbox" == name {
             let mut modes = AllowNothing as u8;
-            let words = null_str_as_empty(value);
-            for word in words.split_iter(' ') {
-                modes |= match word.to_ascii_lower().as_slice() {
+            for word in value.split(' ') {
+                // FIXME: Workaround for https://github.com/mozilla/rust/issues/10683
+                let word_lower = word.to_ascii_lower();
+                modes |= match word_lower.as_slice() {
                     "allow-same-origin" => AllowSameOrigin,
                     "allow-forms" => AllowForms,
                     "allow-pointer-lock" => AllowPointerLock,
@@ -129,6 +144,12 @@ impl HTMLIFrameElement {
         }
     }
 
+    pub fn BeforeRemoveAttr(&mut self, name: DOMString) {
+        if "sandbox" == name {
+            self.sandbox = None;
+        }
+    }
+
     pub fn AllowFullscreen(&self) -> bool {
         false
     }
@@ -138,78 +159,78 @@ impl HTMLIFrameElement {
     }
 
     pub fn Width(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetWidth(&mut self, _width: &DOMString) -> ErrorResult {
+    pub fn SetWidth(&mut self, _width: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Height(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetHeight(&mut self, _height: &DOMString) -> ErrorResult {
+    pub fn SetHeight(&mut self, _height: DOMString) -> ErrorResult {
         Ok(())
     }
 
-    pub fn GetContentDocument(&self) -> Option<AbstractDocument> {
+    pub fn GetContentDocument(&self) -> Option<JS<Document>> {
         None
     }
 
-    pub fn GetContentWindow(&self) -> Option<@mut WindowProxy> {
+    pub fn GetContentWindow(&self) -> Option<JS<WindowProxy>> {
         None
     }
 
     pub fn Align(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetAlign(&mut self, _align: &DOMString) -> ErrorResult {
+    pub fn SetAlign(&mut self, _align: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Scrolling(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetScrolling(&mut self, _scrolling: &DOMString) -> ErrorResult {
+    pub fn SetScrolling(&mut self, _scrolling: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn FrameBorder(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetFrameBorder(&mut self, _frameborder: &DOMString) -> ErrorResult {
+    pub fn SetFrameBorder(&mut self, _frameborder: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn LongDesc(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetLongDesc(&mut self, _longdesc: &DOMString) -> ErrorResult {
+    pub fn SetLongDesc(&mut self, _longdesc: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn MarginHeight(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetMarginHeight(&mut self, _marginheight: &DOMString) -> ErrorResult {
+    pub fn SetMarginHeight(&mut self, _marginheight: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn MarginWidth(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetMarginWidth(&mut self, _marginwidth: &DOMString) -> ErrorResult {
+    pub fn SetMarginWidth(&mut self, _marginwidth: DOMString) -> ErrorResult {
         Ok(())
     }
 
-    pub fn GetSVGDocument(&self) -> Option<AbstractDocument> {
+    pub fn GetSVGDocument(&self) -> Option<JS<Document>> {
         None
     }
 }

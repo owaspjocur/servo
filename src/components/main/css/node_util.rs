@@ -3,71 +3,71 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use layout::incremental::RestyleDamage;
+use layout::util::LayoutDataAccess;
+use layout::wrapper::{TLayoutNode, ThreadSafeLayoutNode};
 
+use extra::arc::Arc;
 use std::cast;
-use std::cell::Cell;
 use style::ComputedValues;
-use script::dom::node::{AbstractNode, LayoutView};
-use servo_util::tree::TreeNodeRef;
 
+pub trait NodeUtil {
+    fn get_css_select_results<'a>(&'a self) -> &'a Arc<ComputedValues>;
+    fn have_css_select_results(&self) -> bool;
 
-pub trait NodeUtil<'self> {
-    fn get_css_select_results(self) -> &'self ComputedValues;
-    fn set_css_select_results(self, decl: ComputedValues);
-    fn have_css_select_results(self) -> bool;
-
-    fn get_restyle_damage(self) -> RestyleDamage;
-    fn set_restyle_damage(self, damage: RestyleDamage);
+    fn get_restyle_damage(&self) -> RestyleDamage;
+    fn set_restyle_damage(&self, damage: RestyleDamage);
 }
 
-impl<'self> NodeUtil<'self> for AbstractNode<LayoutView> {
-    /** 
-     * Provides the computed style for the given node. If CSS selector
-     * Returns the style results for the given node. If CSS selector
-     * matching has not yet been performed, fails.
-     * FIXME: This isn't completely memory safe since the style is
-     * stored in a box that can be overwritten
-     */
-    fn get_css_select_results(self) -> &'self ComputedValues {
-        do self.read_layout_data |layout_data| {
-            match layout_data.style {
-                None => fail!(~"style() called on node without a style!"),
-                Some(ref style) => unsafe { cast::transmute_region(style) }
-            }
+impl<'ln> NodeUtil for ThreadSafeLayoutNode<'ln> {
+    /// Returns the style results for the given node. If CSS selector
+    /// matching has not yet been performed, fails.
+    #[inline]
+    fn get_css_select_results<'a>(&'a self) -> &'a Arc<ComputedValues> {
+        unsafe {
+            let layout_data_ref = self.borrow_layout_data();
+            cast::transmute_region(layout_data_ref.get()
+                                                  .as_ref()
+                                                  .unwrap()
+                                                  .data
+                                                  .style
+                                                  .as_ref()
+                                                  .unwrap())
         }
     }
 
     /// Does this node have a computed style yet?
-    fn have_css_select_results(self) -> bool {
-        self.read_layout_data(|data| data.style.is_some())
-    }
-
-    /// Update the computed style of an HTML element with a style specified by CSS.
-    fn set_css_select_results(self, decl: ComputedValues) {
-        let cell = Cell::new(decl);
-        self.write_layout_data(|data| data.style = Some(cell.take()));
+    fn have_css_select_results(&self) -> bool {
+        let layout_data_ref = self.borrow_layout_data();
+        layout_data_ref.get().get_ref().data.style.is_some()
     }
 
     /// Get the description of how to account for recent style changes.
     /// This is a simple bitfield and fine to copy by value.
-    fn get_restyle_damage(self) -> RestyleDamage {
+    fn get_restyle_damage(&self) -> RestyleDamage {
         // For DOM elements, if we haven't computed damage yet, assume the worst.
         // Other nodes don't have styles.
-        let default = if self.is_element() {
+        let default = if self.node_is_element() {
             RestyleDamage::all()
         } else {
             RestyleDamage::none()
         };
 
-        do self.read_layout_data |layout_data| {
-            layout_data.restyle_damage
-                .map(|x| RestyleDamage::from_int(x))
-                .unwrap_or(default)
-        }
+        let layout_data_ref = self.borrow_layout_data();
+        layout_data_ref
+            .get()
+            .get_ref()
+            .data
+            .restyle_damage
+            .map(|x| RestyleDamage::from_int(x))
+            .unwrap_or(default)
     }
 
     /// Set the restyle damage field.
-    fn set_restyle_damage(self, damage: RestyleDamage) {
-        self.write_layout_data(|data| data.restyle_damage = Some(damage.to_int()));
+    fn set_restyle_damage(&self, damage: RestyleDamage) {
+        let mut layout_data_ref = self.mutate_layout_data();
+        match *layout_data_ref.get() {
+            Some(ref mut layout_data) => layout_data.data.restyle_damage = Some(damage.to_int()),
+            _ => fail!("no layout data for this node"),
+        }
     }
 }

@@ -2,67 +2,98 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use dom::bindings::utils::{DOMString, ErrorResult};
+use dom::bindings::codegen::HTMLAreaElementBinding;
+use dom::bindings::codegen::InheritTypes::HTMLAreaElementDerived;
+use dom::bindings::js::JS;
+use dom::bindings::error::ErrorResult;
+use dom::document::Document;
+use dom::element::HTMLAreaElementTypeId;
+use dom::eventtarget::{EventTarget, NodeTargetTypeId};
 use dom::htmlelement::HTMLElement;
+use dom::node::{Node, ElementNodeTypeId};
+use servo_util::str::DOMString;
 
+#[deriving(Encodable)]
 pub struct HTMLAreaElement {
     htmlelement: HTMLElement
 }
 
+impl HTMLAreaElementDerived for EventTarget {
+    fn is_htmlareaelement(&self) -> bool {
+        match self.type_id {
+            NodeTargetTypeId(ElementNodeTypeId(HTMLAreaElementTypeId)) => true,
+            _ => false
+        }
+    }
+}
+
 impl HTMLAreaElement {
-    pub fn Alt(&self) -> DOMString {
-        None
+    pub fn new_inherited(localName: DOMString, document: JS<Document>) -> HTMLAreaElement {
+        HTMLAreaElement {
+            htmlelement: HTMLElement::new_inherited(HTMLAreaElementTypeId, localName, document)
+        }
     }
 
-    pub fn SetAlt(&self, _alt: &DOMString) -> ErrorResult {
+    pub fn new(localName: DOMString, document: &JS<Document>) -> JS<HTMLAreaElement> {
+        let element = HTMLAreaElement::new_inherited(localName, document.clone());
+        Node::reflect_node(~element, document, HTMLAreaElementBinding::Wrap)
+    }
+}
+
+impl HTMLAreaElement {
+    pub fn Alt(&self) -> DOMString {
+        ~""
+    }
+
+    pub fn SetAlt(&self, _alt: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Coords(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetCoords(&self, _coords: &DOMString) -> ErrorResult {
+    pub fn SetCoords(&self, _coords: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Shape(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetShape(&self, _shape: &DOMString) -> ErrorResult {
+    pub fn SetShape(&self, _shape: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Href(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetHref(&self, _href: &DOMString) -> ErrorResult {
+    pub fn SetHref(&self, _href: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Target(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetTarget(&self, _target: &DOMString) -> ErrorResult {
+    pub fn SetTarget(&self, _target: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Download(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetDownload(&self, _download: &DOMString) -> ErrorResult {
+    pub fn SetDownload(&self, _download: DOMString) -> ErrorResult {
         Ok(())
     }
 
     pub fn Ping(&self) -> DOMString {
-        None
+        ~""
     }
 
-    pub fn SetPing(&self, _ping: &DOMString) -> ErrorResult {
+    pub fn SetPing(&self, _ping: DOMString) -> ErrorResult {
         Ok(())
     }
 
